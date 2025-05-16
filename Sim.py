@@ -4,7 +4,6 @@ from scipy.stats import rankdata
 import rpy2.robjects as ro
 from rpy2.robjects import numpy2ri
 from scipy.stats import gaussian_kde
-from mpl_toolkits.mplot3d import Axes3D
 from scipy.stats import t as student_t
 
 # Global settings
