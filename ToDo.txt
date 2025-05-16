@@ -19,7 +19,8 @@ Scriptie meeting 15-5:
 
 
 Algemeen:
-	Clean up & factor code (functies en documentation, misschien R code in een aparte file)
+	Clean up & modularize code (functies en documentation, misschien R code in een aparte file)
+	Stop plot functions die nu in functions in utils.utils zitten in utils.plot_utils
 
 Notes/vragen:
     Als ik tGARCH(1,1) marginals wil met bb7_copula dependence als true moet ik inverse ecdf gebruiken op de innovations van een simulated tGARCH(1,1)
