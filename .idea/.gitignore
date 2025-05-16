@@ -3,3 +3,7 @@
 /workspace.xml
 /misc.xml
 /master_thesis.iml
+
+# Ignore Python virtual environments
+.venv/
+venv/
