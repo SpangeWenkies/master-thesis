@@ -1,0 +1,46 @@
+To do morgen:
+
+Boundary uncertainty simulation study:
+    Bootstrap ECDF-based regions om te evaluaten zodat je naar scoring variability kan kijken voor beide scoring rules
+    Maak ss van de plots om te bespreken bij meeting
+	Onderzoek hoeveel de estimation error / uncertainty in de boundary op PIT space is en hoe die weer te geven aan de hand van de manieren zoals in mijn methodology
+	Kijk hoe fitten van de andere copulas effect heeft op empirical iets??? (true is bb7 en nu gebruiken we ook bb7 om de boundary te bekijken)
+	Kijk naar de orientation van de CS en CLS (negatieve score beter of positieve) -> trek 1 lijn
+	Kijk naar hoe CS vs CLS zich verhoudt rondom scoren van de true adhv de plots. Maak misschien een plot die laat zien welk deel van de region de score dominate en het verschil met de regels daarin
+
+Scriptie meeting 15-5:
+    Bij schatten van de u_hats eerste keer worden ze in 2025 paper daarna gebruikt als de echte u'tjes. Als je die u'tjes al zet van tevoren weet je wat de echte zijn. Je kan dan de size en power plots maken met de echte utjes en met de u_hats gebruikt als echte u'tjes. Dan kijken wat het verschil is op de size en power plots.
+    Je moet de boundry transformation niet laten afhangen van de copula die je kiest voor je f of g omdat je anders met twee maten meet (als a wisselt tussen f en p en tussen g en p). De boundary moet door een derde copula transformed worden.
+        Wat is dan de true boundary & waar kan je de bonferonni bounds op zetten?
+    Vraag ramon naar hoe hij de numerical integral doet
+    Hangt het q'tje nu ook niet af van de f of g?
+
+
+
+
+Algemeen:
+	Clean up & factor code (functies en documentation, misschien R code in een aparte file)
+
+Notes/vragen:
+    Als ik tGARCH(1,1) marginals wil met bb7_copula dependence als true moet ik inverse ecdf gebruiken op de innovations van een simulated tGARCH(1,1)
+        Dan komt er al uncertainty door de ecdf bij kijken.
+        Alleen als ik een analytical inverse CDF kan gebruiken zoals voor gewoon student t innovations dan heb ik geen uncertainty
+            Gebruik inverse ECDF van mega sample om quantile function te maken (mogelijk deze smoothen)
+        Is het wel nodig om tGARCH(1,1) marginals te gebruiken in deze simulation study, want de copula vraagt om standardized residuals?
+        Als we de residuals van de tGARCH standardizen dan krijg je gewoon student-t distributed marginals die je gebruikt???
+        GARCH deel heeft te maken met time dependence, niet cross sectional wat volgens mij alleen zou worden bekeken in deze simulation setup.
+        Overschakelen op student-t marginals en analytical inverse CDF?
+
+    Wat zijn normale waardes die de copula density aanneemt wanneer het likely is dat er joint dependence is? PLot geeft 40+ als hoge waardes.
+        Lijkt me dat 1 independence is en dan 0-1 unlikely en 1+ likely
+
+    Wat is het numerically integraten en waarom is dit belangrijk?
+        Stel grid is op [0,1]^2 en 300x300 dan heeft elke cell oppervlakte (1/300)^2. Moet deze constant ook keer de uiteindelijke sum (integral approximation)
+        Waarom was dit zo een issue volgens ramon?
+
+    Moet ik als ik de ECDF based regions maak en bootstrap/simulation doe de y1 en y2 gebruiken die uit true marginals + true copula komen en dan daar de copula of interest op fitten en dan een nieuwe y series maken?
+        Of moet ik gewoon y1 en y2 uit de student-t halen zoals de true en dan gelijk een copula of interest daar op toepassen om daarvan y series met de dependence van die copula te krijgen en dan op een manier vergelijken met de true dependence copula?
+        Moet ik de copula of interest fitten? of kan ik gewoon parameters zetten? fitten lijkt me handiger richting empirisch nut
+
+    Moet ik uberhaupt kijken naar smoothing van ECDF door quantile regression of kernel interpolation. Of is dat alleen handig als we een percentile willen zoeken?
+
