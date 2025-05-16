@@ -1,8 +1,10 @@
 To do morgen:
 
 Boundary uncertainty simulation study:
+    Maak de restriction transformation met een andere copula dan de f of g voor size en power test credibility
+    Repeat de 2011 (of 2025?) onderzoek van diks et al, maar gebruik nu de true u'tjes ipv ecdf based als 'echte' gebruiken (size en power vergelijken)
     Bootstrap ECDF-based regions om te evaluaten zodat je naar scoring variability kan kijken voor beide scoring rules
-    Maak ss van de plots om te bespreken bij meeting
+    Fix plots
 	Onderzoek hoeveel de estimation error / uncertainty in de boundary op PIT space is en hoe die weer te geven aan de hand van de manieren zoals in mijn methodology
 	Kijk hoe fitten van de andere copulas effect heeft op empirical iets??? (true is bb7 en nu gebruiken we ook bb7 om de boundary te bekijken)
 	Kijk naar de orientation van de CS en CLS (negatieve score beter of positieve) -> trek 1 lijn
@@ -11,9 +13,10 @@ Boundary uncertainty simulation study:
 Scriptie meeting 15-5:
     Bij schatten van de u_hats eerste keer worden ze in 2025 paper daarna gebruikt als de echte u'tjes. Als je die u'tjes al zet van tevoren weet je wat de echte zijn. Je kan dan de size en power plots maken met de echte utjes en met de u_hats gebruikt als echte u'tjes. Dan kijken wat het verschil is op de size en power plots.
     Je moet de boundry transformation niet laten afhangen van de copula die je kiest voor je f of g omdat je anders met twee maten meet (als a wisselt tussen f en p en tussen g en p). De boundary moet door een derde copula transformed worden.
-        Wat is dan de true boundary & waar kan je de bonferonni bounds op zetten?
+        Er is dan dus eigenlijk geen true & waar kan je de bonferroni bounds op zetten?
     Vraag ramon naar hoe hij de numerical integral doet
-    Hangt het q'tje nu ook niet af van de f of g?
+    Hangt het q'tje nu ook niet af van de f of g? --> maakt waarschijnlijk niet uit
+
 
 
 
@@ -21,6 +24,8 @@ Scriptie meeting 15-5:
 Algemeen:
 	Clean up & modularize code (functies en documentation, misschien R code in een aparte file)
 	Stop plot functions die nu in functions in utils.utils zitten in utils.plot_utils
+	Als too many configs maak dan een class of namespace
+
 
 Notes/vragen:
     Als ik tGARCH(1,1) marginals wil met bb7_copula dependence als true moet ik inverse ecdf gebruiken op de innovations van een simulated tGARCH(1,1)
