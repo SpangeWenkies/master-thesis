@@ -13,5 +13,5 @@ alpha = np.array([0.1])  # np.array([0.1]) #np.array([0.05, 0.1])
 beta = np.array([0.6])
 
 # bb7 params
-theta = np.array([4])
-delta = np.array([6])
+theta = np.array([2])
+delta = np.array([2])

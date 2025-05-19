@@ -10,6 +10,7 @@ from utils.utils import inverse_ecdf
 from utils.utils import simulate_joint_t_marginals
 from utils.utils import evaluate_mass_in_region
 from utils.utils import compute_scores_over_region
+from utils.utils import compare_trueU_ecdfU_score
 from config import iSeed, n, omega, alpha, beta, dist, nu, theta, delta
 
 
@@ -50,6 +51,15 @@ def main():
     print(f"CLS (Conditional Likelihood Score): {CLS_true:.4f}")
     print(f"CS (Censored Likelihood Score):   {CS_true:.4f}")
 
+    results = compare_trueU_ecdfU_score(
+        copula_pdf=copula_pdf,
+        sim_u1=sim_u1,
+        sim_u2=sim_u2,
+        U1=U1,
+        U2=U2,
+        W_empirical=W,
+        df=nu
+    )
 
 
 ###########################################################

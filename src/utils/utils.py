@@ -185,15 +185,17 @@ def to_unif_PIT(residuals):
 ###########################################################
 
 
-def R_bb7(u1, u2, theta, delta, resid1, resid2):
+def R_bb7(u1, u2, theta, delta, resid1, resid2, verbose=True):
     """
         Purpose:
             Uses residuals series their sizes to create bivariate bb7 PITs
 
         Inputs:
-            u1, u2          input series of uniforms from PIT transformation of marginal residuals
-            theta           bb7 dependence parameter (>1)
-            delta           bb7 tail asymmetry parameter (>1)
+            u1, u2:             input series of uniforms from PIT transformation of marginal residuals
+            theta:              bb7 dependence parameter (>1)
+            delta:              bb7 tail asymmetry parameter (>1)
+            verbose (boolean):  Plot or not
+            resid1, resid2:     residual series
 
         Output:
             Two bivariate PIT series on [0,1] respecting the given bb7 dependence
@@ -232,7 +234,7 @@ def R_bb7(u1, u2, theta, delta, resid1, resid2):
     cop_cdf <- cop_cdf_values
 
     # Evaluate true PDF over a grid
-    u_seq <- seq(0.01, 0.99, length.out = 100)
+    u_seq <- seq(0.005, 0.995, length.out = 300)
     grid <- expand.grid(u_seq, u_seq)
     true_pdf <- BiCopPDF(grid[,1], grid[,2], cop_model)
     ''')
@@ -240,8 +242,8 @@ def R_bb7(u1, u2, theta, delta, resid1, resid2):
     sim_u1 = np.array(ro.r('sim_u1'))
     sim_u2 = np.array(ro.r('sim_u2'))
     copula_cdf_values = np.array(ro.r('cop_cdf'))  # Optional
-    true_pdf = np.array(ro.r('true_pdf')).reshape((100, 100))
-    u_seq = np.linspace(0.01, 0.99, 100)
+    true_pdf = np.array(ro.r('true_pdf')).reshape((300, 300))
+    u_seq = np.linspace(0.005, 0.995, 300)
     U1, U2 = np.meshgrid(u_seq, u_seq)
 
     # Estimate empirical density using KDE
@@ -249,29 +251,29 @@ def R_bb7(u1, u2, theta, delta, resid1, resid2):
     kde = gaussian_kde(uv)
     empirical_pdf = kde(np.vstack([U1.ravel(), U2.ravel()])).reshape(U1.shape)
 
-    # Prepare for plotting
-    fig = plt.figure(figsize=(14, 6))
+    true_pdf_clipped = np.clip(true_pdf, 0, 8)
 
-    # Plot empirical KDE
-    # ax1 = fig.add_subplot(1, 2, 1, projection='3d')
-    # ax1.plot_surface(U1, U2, empirical_pdf, cmap='viridis', linewidth=0)
-    # ax1.set_title("Empirical Copula Density (KDE)")
-    # ax1.set_xlabel("u1")
-    # ax1.set_ylabel("u2")
-    # ax1.set_zlabel("Density")
 
-    # Plot theoretical BB7 PDF
+    if verbose:
+        # Plot empirical KDE
+        fig = plt.figure(figsize=(14, 6))
+        ax1 = fig.add_subplot(1, 2, 1, projection='3d')
+        ax1.plot_surface(U1, U2, empirical_pdf, cmap='viridis', linewidth=0)
+        ax1.set_title("Empirical Copula Density (KDE)")
+        ax1.set_xlabel("u1")
+        ax1.set_ylabel("u2")
+        ax1.set_zlabel("Density")
 
-    true_pdf_clipped = np.clip(true_pdf, 0, 40)
-    # ax2 = fig.add_subplot(1, 2, 2, projection='3d')
-    # ax2.plot_surface(U1, U2, true_pdf_clipped, cmap='plasma', linewidth=0)
-    # ax2.set_title("Theoretical BB7 Copula PDF (clipped at 40)")
-    # ax2.set_xlabel("u1")
-    # ax2.set_ylabel("u2")
-    # ax2.set_zlabel("Density")
+        # Plot theoretical BB7 PDF
+        ax2 = fig.add_subplot(1, 2, 2, projection='3d')
+        ax2.plot_surface(U1, U2, true_pdf_clipped, cmap='plasma', linewidth=0)
+        ax2.set_title("Theoretical BB7 Copula PDF (clipped at 40)")
+        ax2.set_xlabel("u1")
+        ax2.set_ylabel("u2")
+        ax2.set_zlabel("Density")
 
-    # plt.tight_layout()
-    # plt.show()
+        plt.tight_layout()
+        plt.show()
 
     # Use sim_resid1 and sim_resid2 as marginals
     F1_inv = lambda u: np.quantile(resid1, u)
@@ -289,17 +291,18 @@ def R_bb7(u1, u2, theta, delta, resid1, resid2):
             y2_ = F2_inv(U2[i, j])
             W[i, j] = 1.0 if (y1_ + y2_) <= q_05 else 0.0
 
-    # # 2D contour plot
-    # plt.figure(figsize=(7, 6))
-    # contour = plt.contourf(U1, U2, empirical_pdf, levels=30, cmap="viridis")
-    # plt.contour(U1, U2, W, levels=[0.5], colors='red', linewidths=2)
-    # plt.title("Empirical Copula Density with Region y1 + y2 ≤ q₀.₀₅")
-    # plt.xlabel("u1 (PIT)")
-    # plt.ylabel("u2 (PIT)")
-    # plt.colorbar(contour, label="Density")
-    # plt.grid(True)
-    # plt.tight_layout()
-    # plt.show()
+    # 2D contour plot
+    if verbose:
+        plt.figure(figsize=(7, 6))
+        contour = plt.contourf(U1, U2, empirical_pdf, levels=30, cmap="viridis")
+        plt.contour(U1, U2, W, levels=[0.5], colors='red', linewidths=2)
+        plt.title("Empirical Copula Density with Region y1 + y2 ≤ q₀.₀₅")
+        plt.xlabel("u1 (PIT)")
+        plt.ylabel("u2 (PIT)")
+        plt.colorbar(contour, label="Density")
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
 
     return sim_u1, sim_u2, copula_cdf_values, W, empirical_pdf, true_pdf
 
@@ -307,7 +310,7 @@ def R_bb7(u1, u2, theta, delta, resid1, resid2):
 ###########################################################
 
 
-def simulate_joint_t_marginals(n, df, theta, delta):
+def simulate_joint_t_marginals(n, df, theta, delta, verbose=True):
     """
     Simulate joint sample from a BB7 copula and Student-t marginals.
 
@@ -316,6 +319,7 @@ def simulate_joint_t_marginals(n, df, theta, delta):
         df (float): Degrees of freedom for the Student-t marginals
         theta (float): BB7 copula parameter (dependence strength)
         delta (float): BB7 copula parameter (tail asymmetry)
+        verbose (boolean): Plot or not
 
     Returns:
         y1, y2: Simulated marginal series
@@ -370,16 +374,17 @@ def simulate_joint_t_marginals(n, df, theta, delta):
     W_true = ((Y1 + Y2) <= q_true).astype(int)
 
     # --- Step 4: Plot ---
-    # plt.figure(figsize=(8, 6))
-    # contour = plt.contourf(U1, U2, np.clip(copula_pdf, 0, 40), levels=30, cmap="viridis")
-    # plt.contour(U1, U2, W_true, levels=[0.5], colors="red", linewidths=2)
-    # plt.title("BB7 Copula PDF with True Region Overlay")
-    # plt.xlabel("u1")
-    # plt.ylabel("u2")
-    # plt.colorbar(contour, label="Copula Density")
-    # plt.grid(True)
-    # plt.tight_layout()
-    # plt.show()
+    if verbose:
+        plt.figure(figsize=(8, 6))
+        contour = plt.contourf(U1, U2, np.clip(copula_pdf, 0, 8), levels=30, cmap="viridis")
+        plt.contour(U1, U2, W_true, levels=[0.5], colors="red", linewidths=2)
+        plt.title("BB7 Copula PDF with True Region Overlay")
+        plt.xlabel("u1")
+        plt.ylabel("u2")
+        plt.colorbar(contour, label="Copula Density")
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
 
     return y1, y2, u1, u2, q_true, U1, U2, W_true, copula_pdf
 
@@ -387,23 +392,23 @@ def simulate_joint_t_marginals(n, df, theta, delta):
 ###########################################################
 
 
-def inverse_ecdf(u, original_resids):
+def inverse_ecdf(u, original_resid):
     """
         Purpose:
             Inverts the PITs back to residuals using inverse ECDF
 
         Inputs:
             u                   input series of PITs
-            original_resids     original AR-GARCH residuals
+            original_resid     original AR-GARCH residuals
 
         Output:
             GARCH style residuals respecting BB7 dependence
 
     """
-    sorted_resids = np.sort(original_resids)
-    n = len(sorted_resids)
+    sorted_resid = np.sort(original_resid)
+    n = len(sorted_resid)
     indices = np.minimum((u * n).astype(int), n - 1)
-    return sorted_resids[indices]
+    return sorted_resid[indices]
 
 
 ###########################################################
@@ -499,3 +504,60 @@ def compute_scores_over_region(density, W, eps=1e-12):
     CLS = np.sum(log_density * p_cond)
 
     return CS, CLS
+
+def compare_trueU_ecdfU_score(copula_pdf, sim_u1, sim_u2, U1, U2, W_empirical, df, verbose=True):
+    """
+    Compare scoring results using the ECDF-based region vs the true region
+    defined from known marginal inverse CDFs.
+
+    Parameters:
+        copula_pdf     : 2D numpy array of copula density on [0,1]^2
+        sim_u1, sim_u2 : Simulated PIT values used to compute the true region quantile
+        U1, U2         : Meshgrid of u1 and u2 (same shape as copula_pdf)
+        W_empirical    : Region mask built using ECDF inverse CDF
+        df             : Degrees of freedom for Student-t marginals
+        verbose        : If True, print score comparisons and show region plots
+
+    Returns:
+        A dictionary with CLS and CSL scores for both region types and region masks
+    """
+
+    # 1. Define true inverse CDFs (analytical)
+    F1_inv = lambda u: student_t.ppf(u, df)
+    F2_inv = lambda u: student_t.ppf(u, df)
+
+    # 2. Compute true quantile
+    q_true = np.quantile(F1_inv(sim_u1) + F2_inv(sim_u2), 0.05)
+
+    # 3. Define true region
+    Y1_true = F1_inv(U1)
+    Y2_true = F2_inv(U2)
+    W_true = ((Y1_true + Y2_true) <= q_true).astype(int)
+
+    # 4. Compute scoring rules for both regions
+    results = {
+        "CLS_emp": compute_scores_over_region(copula_pdf, W_empirical)[1],
+        "CLS_true": compute_scores_over_region(copula_pdf, W_true)[1],
+        "CS_emp": compute_scores_over_region(copula_pdf, W_empirical)[0],
+        "CS_true": compute_scores_over_region(copula_pdf, W_true)[0],
+        "W_true": W_true,
+        "q_true": q_true
+    }
+
+    if verbose:
+        print(f"CLS (ECDF region):  {results['CLS_emp']:.4f}")
+        print(f"CLS (True region):  {results['CLS_true']:.4f}")
+        print(f"CS (ECDF region):  {results['CS_emp']:.4f}")
+        print(f"CS (True region):  {results['CS_true']:.4f}")
+
+        plt.figure(figsize=(8, 6))
+        plt.contour(U1, U2, W_empirical, levels=[0.5], colors='red', linewidths=2, label="ECDF Region")
+        plt.contour(U1, U2, W_true, levels=[0.5], colors='blue', linewidths=2, label="True Region")
+        plt.title("True vs ECDF Region Boundaries in PIT Space")
+        plt.xlabel("u1")
+        plt.ylabel("u2")
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+
+    return results

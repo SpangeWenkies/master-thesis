@@ -2,13 +2,13 @@ To do morgen:
 
 Boundary uncertainty simulation study:
     Maak de restriction transformation met een andere copula dan de f of g voor size en power test credibility
-    Repeat de 2011 (of 2025?) onderzoek van diks et al, maar gebruik nu de true u'tjes ipv ecdf based als 'echte' gebruiken (size en power vergelijken)
+    Repeat de 2010 onderzoek van diks et al, maar gebruik nu de true u'tjes ipv ecdf based als 'echte' gebruiken (size en power vergelijken)
+        --> true vs estimated boundary lijkt me nu ontzettend verschillend
+        --> check alle inputs en of ze daadwerkelijk de true of empirical zijn en of ze niet te veel approximation steps hebben
+        --> kijk wat te doen met de scores calculated en wat de diks et al study doet
     Bootstrap ECDF-based regions om te evaluaten zodat je naar scoring variability kan kijken voor beide scoring rules
-    Fix plots
-	Onderzoek hoeveel de estimation error / uncertainty in de boundary op PIT space is en hoe die weer te geven aan de hand van de manieren zoals in mijn methodology
-	Kijk hoe fitten van de andere copulas effect heeft op empirical iets??? (true is bb7 en nu gebruiken we ook bb7 om de boundary te bekijken)
+	Kijk hoe fitten van de andere copulas effect heeft op empirical??? (true is bb7 en nu gebruiken we ook bb7 om de boundary te bekijken)
 	Kijk naar de orientation van de CS en CLS (negatieve score beter of positieve) -> trek 1 lijn
-	Kijk naar hoe CS vs CLS zich verhoudt rondom scoren van de true adhv de plots. Maak misschien een plot die laat zien welk deel van de region de score dominate en het verschil met de regels daarin
 
 Scriptie meeting 15-5:
     Bij schatten van de u_hats eerste keer worden ze in 2025 paper daarna gebruikt als de echte u'tjes. Als je die u'tjes al zet van tevoren weet je wat de echte zijn. Je kan dan de size en power plots maken met de echte utjes en met de u_hats gebruikt als echte u'tjes. Dan kijken wat het verschil is op de size en power plots.
@@ -17,15 +17,8 @@ Scriptie meeting 15-5:
     Vraag ramon naar hoe hij de numerical integral doet
     Hangt het q'tje nu ook niet af van de f of g? --> maakt waarschijnlijk niet uit
 
-
-
-
-
 Algemeen:
-	Clean up & modularize code (functies en documentation, misschien R code in een aparte file)
-	Stop plot functions die nu in functions in utils.utils zitten in utils.plot_utils
-	Als too many configs maak dan een class of namespace
-
+	Als too many configs maak dan een class of een namespace
 
 Notes/vragen:
     Als ik tGARCH(1,1) marginals wil met bb7_copula dependence als true moet ik inverse ecdf gebruiken op de innovations van een simulated tGARCH(1,1)
