@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from utils.plot_utils import Plot
 from utils.utils import simulate_GARCH
-from utils.utils import to_unif_PIT
+from utils.utils import resid_to_unif_PIT_ECDF
 from utils.utils import R_bb7
 from utils.utils import inverse_ecdf
 from utils.utils import simulate_joint_t_marginals
@@ -28,8 +28,8 @@ def main():
     # GARCH(p,q)
     resid1, variance1, resid2, variance2 = simulate_GARCH(n, omega, alpha, beta, dist, df=nu)
 
-    u1 = to_unif_PIT(resid1)
-    u2 = to_unif_PIT(resid2)
+    u1 = resid_to_unif_PIT_ECDF(resid1)
+    u2 = resid_to_unif_PIT_ECDF(resid2)
 
     sim_u1, sim_u2, copula_cdf_values, W, empirical_pdf, true_pdf = R_bb7(u1, u2, theta, delta, resid1, resid2)
 

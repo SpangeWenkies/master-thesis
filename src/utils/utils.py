@@ -166,13 +166,15 @@ def GARCHEstim(vGARCHParams0, iP, vY):
 ###########################################################
 
 
-def to_unif_PIT(residuals):
+def resid_to_unif_PIT_ECDF(residuals):
     """
         Purpose:
-            Converts residuals to uniform margins using empirical CDF
+            Converts residuals to uniform margins implicitly using empirical CDF
+            u_t = F_hat(resid_t) = rank(resid_t) / (n+1)
+            Here (n+1) to correct for bias
 
         Inputs:
-            residuals       input series
+            residuals       input series (standardized)
 
         Output:
             Residuals series mapped to [0,1]
@@ -267,7 +269,7 @@ def R_bb7(u1, u2, theta, delta, resid1, resid2, verbose=True):
         # Plot theoretical BB7 PDF
         ax2 = fig.add_subplot(1, 2, 2, projection='3d')
         ax2.plot_surface(U1, U2, true_pdf_clipped, cmap='plasma', linewidth=0)
-        ax2.set_title("Theoretical BB7 Copula PDF (clipped at 40)")
+        ax2.set_title("Theoretical BB7 Copula PDF (clipped at 8)")
         ax2.set_xlabel("u1")
         ax2.set_ylabel("u2")
         ax2.set_zlabel("Density")
