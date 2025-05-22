@@ -18,7 +18,6 @@ def WhiteNoiseSim(iT, vDistrParams, sDistrName):
         iT              sample size
         vDistrParams    distributional params
         sDistrName      distribution name
-        bPlot           boolean for plotting series, default is 1
 
     Return value:
         vEps            white noise realisations
@@ -453,7 +452,7 @@ def simulate_GARCH(n, omega, alpha, beta, dist, df=np.array([5])):
         resid1[t] = np.sqrt(variance1[t]) * white_noise1[t]
         resid2[t] = np.sqrt(variance2[t]) * white_noise2[t]
 
-    return resid1, variance1, resid2, variance2
+    return resid1, variance1, white_noise1, resid2, variance2, white_noise2
 
 
 ###########################################################
@@ -507,44 +506,134 @@ def compute_scores_over_region(density, W, eps=1e-12):
 
     return CS, CLS
 
-def compare_trueU_ecdfU_score(copula_pdf, sim_u1, sim_u2, U1, U2, W_empirical, df, verbose=True):
+def compare_trueU_ecdfU_score(R, P, H, grid_size, theta, delta, df, verbose=True):
     """
     Compare scoring results using the ECDF-based region vs the true region
     defined from known marginal inverse CDFs.
 
     Parameters:
-        copula_pdf     : 2D numpy array of copula density on [0,1]^2
-        sim_u1, sim_u2 : Simulated PIT values used to compute the true region quantile
-        U1, U2         : Meshgrid of u1 and u2 (same shape as copula_pdf)
-        W_empirical    : Region mask built using ECDF inverse CDF
-        df             : Degrees of freedom for Student-t marginals
-        verbose        : If True, print score comparisons and show region plots
+        R                   : sample size
+        P                   : number of (H-day-ahead) forecasts to evaluate
+        H                   : forecast horizon
+        theta, delta        : bb7 copula parameters
+        df                  : Degrees of freedom for Student-t marginals
+        verbose             : If True, print score comparisons and show region plots
 
     Returns:
         A dictionary with CLS and CSL scores for both region types and region masks
     """
 
-    # 1. Define true inverse CDFs (analytical)
-    F1_inv = lambda u: student_t.ppf(u, df)
-    F2_inv = lambda u: student_t.ppf(u, df)
+    numpy2ri.activate()
 
-    # 2. Compute true quantile
-    q_true = np.quantile(F1_inv(sim_u1) + F2_inv(sim_u2), 0.05)
+    n = R + P + H - 1
 
-    # 3. Define true region
-    Y1_true = F1_inv(U1)
-    Y2_true = F2_inv(U2)
+    # Step 1: Simulate PITs from BB7 copula via R
+    ro.globalenv['n'] = n
+    ro.globalenv['grid_size'] = grid_size
+    ro.globalenv['theta'] = theta
+    ro.globalenv['delta'] = delta
+
+    ro.r('''
+    library(VineCopula)
+    set.seed(123)
+
+    # Simulate PITs
+    cop_model <- BiCop(family = 17, par = theta, par2 = delta)
+    u_sim <- BiCopSim(N = n, obj = cop_model)
+    u1 <- u_sim[, 1]
+    u2 <- u_sim[, 2]
+
+    # Create evaluation grid
+    margin <- 1 / ( 2 * grid_size)
+    u_seq <- seq(margin, 1 - margin, length.out = grid_size)
+    grid <- expand.grid(u_seq, u_seq)
+
+    # Evaluate PDF on grid
+    pdf_vals <- BiCopPDF(grid[,1], grid[,2], cop_model)
+    ''')
+
+    # True PIT values used to compute the true region quantile
+    true_u1 = np.array(ro.r('u1'))
+    true_u2 = np.array(ro.r('u2'))
+
+    pdf_vals = np.array(ro.r('pdf_vals'))
+
+    # Create meshgrid of u1 and u2 (to be same shape as copula_pdf)
+    u_seq = np.linspace(0, 1, grid_size)
+    U1, U2 = np.meshgrid(u_seq, u_seq)
+
+    # 2D numpy array of copula density on [0,1]^2
+    copula_pdf = pdf_vals.reshape(U1.shape)
+
+    # Create y1 and y2 using the true PITs and analytical inverse
+    y1 = student_t.ppf(true_u1, df)
+    y2 = student_t.ppf(true_u2, df)
+
+    # Now from with these y1 and y2 create the ECDF function of the PITs
+
+    F1_inv_ecdf = lambda u: np.quantile(y1, u)
+    F2_inv_ecdf = lambda u: np.quantile(y2, u)
+
+    # Compute empirical quantile
+    q_emp = np.quantile(y1 + y2, 0.05)
+
+    # Define empirical region
+    Y1_emp = F1_inv_ecdf(U1)
+    Y2_emp = F2_inv_ecdf(U2)
+    W_emp = ((Y1_emp + Y2_emp) <= q_emp).astype(int)
+
+    # Define true inverse CDFs (analytical)
+    F1_inv_true = lambda u: student_t.ppf(u, df)
+    F2_inv_true = lambda u: student_t.ppf(u, df)
+
+    # Compute true quantile
+    q_true = np.quantile(F1_inv_true(true_u1) + F2_inv_true(true_u2), 0.05)
+
+    # Define true region
+    Y1_true = F1_inv_true(U1)
+    Y2_true = F2_inv_true(U2)
     W_true = ((Y1_true + Y2_true) <= q_true).astype(int)
 
-    # 4. Compute scoring rules for both regions
+    # Compute scoring rules for both regions
     results = {
-        "CLS_emp": compute_scores_over_region(copula_pdf, W_empirical)[1],
+        "CLS_emp": compute_scores_over_region(copula_pdf, W_emp)[1],
         "CLS_true": compute_scores_over_region(copula_pdf, W_true)[1],
-        "CS_emp": compute_scores_over_region(copula_pdf, W_empirical)[0],
+        "CS_emp": compute_scores_over_region(copula_pdf, W_emp)[0],
         "CS_true": compute_scores_over_region(copula_pdf, W_true)[0],
         "W_true": W_true,
         "q_true": q_true
     }
+
+    for t in range(R, R + P):
+        u1_train = true_u1[t - R:t]
+        u2_train = true_u2[t - R:t]
+
+        # We pretend we predicted these because we had a correct copula specification
+        u1_target = true_u1[t + H - 1]
+        u1_target = true_u1[t + H - 1]
+
+        y1_train = student_t.ppf(u1_train, df)
+        y2_train = student_t.ppf(u2_train, df)
+
+        F1_inv_ecdf_train = lambda u: np.quantile(y1_train, u)
+        F2_inv_ecdf_train = lambda u: np.quantile(y2_train, u)
+
+        q_emp_train = np.quantile(y1_train + y2_train, 0.05)
+
+        Y1_emp_train = F1_inv_ecdf_train(U1)
+        Y2_emp_train = F2_inv_ecdf_train(U2)
+        W_emp_train = ((Y1_emp_train + Y2_emp_train) <= q_emp_train).astype(int)
+
+        F1_inv_true = lambda u: student_t.ppf(u, df)
+        F2_inv_true = lambda u: student_t.ppf(u, df)
+
+        q_true_train = np.quantile(F1_inv_true(u1_train) + F2_inv_true(u2_train), 0.05)
+        Y1_true = F1_inv_true(U1)
+        Y2_true = F2_inv_true(U2)
+        W_true_train = ((Y1_true + Y2_true) <= q_true_train).astype(int)
+
+        CS_emp_train, CLS_emp_train = compute_scores_over_region(copula_pdf, W_emp_train)
+        CS_true_train, CLS_true_train = compute_scores_over_region(copula_pdf, W_true_train)
 
     if verbose:
         print(f"CLS (ECDF region):  {results['CLS_emp']:.4f}")
@@ -553,7 +642,7 @@ def compare_trueU_ecdfU_score(copula_pdf, sim_u1, sim_u2, U1, U2, W_empirical, d
         print(f"CS (True region):  {results['CS_true']:.4f}")
 
         plt.figure(figsize=(8, 6))
-        plt.contour(U1, U2, W_empirical, levels=[0.5], colors='red', linewidths=2, label="ECDF Region")
+        plt.contour(U1, U2, W_emp, levels=[0.5], colors='red', linewidths=2, label="ECDF Region")
         plt.contour(U1, U2, W_true, levels=[0.5], colors='blue', linewidths=2, label="True Region")
         plt.title("True vs ECDF Region Boundaries in PIT Space")
         plt.xlabel("u1")

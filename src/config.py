@@ -6,6 +6,11 @@ iSeed = 12085278
 
 # GARCH params
 n = 10000
+R = 1000
+P = 1000
+H = 10
+reps = 1000
+grid_size = 10000
 dist = 't'
 nu = np.array([5])
 omega = np.array([0.01])
