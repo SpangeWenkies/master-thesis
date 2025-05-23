@@ -1,3 +1,5 @@
+import concurrent
+
 import numpy as np
 import sys
 import matplotlib.pyplot as plt
@@ -6,7 +8,10 @@ import rpy2.robjects as ro
 from rpy2.robjects import numpy2ri
 from scipy.stats import gaussian_kde
 from scipy.stats import t as student_t
+from scipy.stats import multivariate_t
+from tqdm import tqdm
 import scipy.optimize as opt
+from concurrent.futures import ProcessPoolExecutor
 
 
 def WhiteNoiseSim(iT, vDistrParams, sDistrName):
@@ -506,6 +511,100 @@ def compute_scores_over_region(density, W, eps=1e-12):
 
     return CS, CLS
 
+
+###########################################################
+def compute_ecdf_inverse(sample):
+    """
+        Return ECDF-based inverse function using quantile interpolation.
+
+        Inputs:
+            sample  : standardized sample of which to use the ECDF
+
+        Outputs:
+            ECDF as a function of the PITs
+    """
+    return lambda u: np.quantile(sample, u)
+
+
+###########################################################
+def compute_true_t_inverse(df):
+    """
+        Return student-t CDF inverse function
+
+        Inputs:
+            df  : degrees of freedom
+
+        Outputs:
+            Inverse student-t CDF as function of PITs
+    """
+    return lambda u: student_t.ppf(u, df)
+
+def simulate_independent_t_copula(n, df):
+    """
+        Simulate PITs of product copula with student-t marginals
+
+        Inputs:
+            n   : sample size
+            df  : degrees of freedom
+
+        Outputs:
+            PITs
+    """
+    eps1 = student_t.rvs(df, size=n)
+    eps2 = student_t.rvs(df, size=n)
+    u1 = student_t.cdf(eps1, df)
+    u2 = student_t.cdf(eps2, df)
+    return u1, u2
+
+###########################################################
+def create_region(U1, U2, F1_inv, F2_inv, q_alpha):
+    """
+        Create a binary mask for the region where F1_inv(U1) + F2_inv(U2) <= q_alpha.
+
+        Inputs:
+            U1, U2          : Meshgrid same shape as copula_pdf
+            F1_inv, F2_inv  : inverse of either analytical CDF or emperical CDF
+            q_alpha         : the threshold quantile of the restriction (in this case Y1+Y2)
+        Outputs:
+            ECDF as a function of the PITs
+    """
+    Y1 = F1_inv(U1)
+    Y2 = F2_inv(U2)
+    W = ((Y1 + Y2) <= q_alpha).astype(int)
+    return W
+
+
+###########################################################
+def copula_pdf_student_t(U1, U2, rho, df):
+    """
+        Create a binary mask for the region where F1_inv(U1) + F2_inv(U2) <= q_alpha.
+
+        Inputs:
+            U1, U2  : Meshgrid same shape as copula_pdf
+            rho     : Correlation parameter [-1,1]
+            df      : the threshold quantile of the restriction (in this case Y1+Y2)
+        Outputs:
+            copola pdf of a student-t copula
+    """
+
+
+    # Inverse transform
+    x = student_t.ppf(U1, df)
+    y = student_t.ppf(U2, df)
+
+    # Build covariance matrix
+    cov = np.array([[1, rho], [rho, 1]])
+
+    # Multivariate t PDF
+    mv_pdf = multivariate_t.pdf(np.stack([x, y], axis=-1), df=df, shape=cov)
+
+    # Marginal t PDFs
+    denom = student_t.pdf(x, df) * student_t.pdf(y, df)
+
+    return mv_pdf / denom
+
+
+###########################################################
 def compare_trueU_ecdfU_score(R, P, H, grid_size, theta, delta, df, verbose=True):
     """
     Compare scoring results using the ECDF-based region vs the true region
@@ -571,28 +670,25 @@ def compare_trueU_ecdfU_score(R, P, H, grid_size, theta, delta, df, verbose=True
 
     # Now from with these y1 and y2 create the ECDF function of the PITs
 
-    F1_inv_ecdf = lambda u: np.quantile(y1, u)
-    F2_inv_ecdf = lambda u: np.quantile(y2, u)
+    F1_inv_ecdf = compute_ecdf_inverse(y1)
+    F2_inv_ecdf = compute_ecdf_inverse(y2)
 
     # Compute empirical quantile
     q_emp = np.quantile(y1 + y2, 0.05)
 
     # Define empirical region
-    Y1_emp = F1_inv_ecdf(U1)
-    Y2_emp = F2_inv_ecdf(U2)
-    W_emp = ((Y1_emp + Y2_emp) <= q_emp).astype(int)
+
+    W_emp = create_region(U1, U2, F1_inv=F1_inv_ecdf, F2_inv=F2_inv_ecdf, q_alpha=q_emp)
 
     # Define true inverse CDFs (analytical)
-    F1_inv_true = lambda u: student_t.ppf(u, df)
-    F2_inv_true = lambda u: student_t.ppf(u, df)
+    F1_inv_true = compute_true_t_inverse(df)
+    F2_inv_true = compute_true_t_inverse(df)
 
     # Compute true quantile
     q_true = np.quantile(F1_inv_true(true_u1) + F2_inv_true(true_u2), 0.05)
 
     # Define true region
-    Y1_true = F1_inv_true(U1)
-    Y2_true = F2_inv_true(U2)
-    W_true = ((Y1_true + Y2_true) <= q_true).astype(int)
+    W_true = create_region(U1, U2, F1_inv=F1_inv_true, F2_inv=F2_inv_true, q_alpha=q_true)
 
     # Compute scoring rules for both regions
     results = {
@@ -615,22 +711,20 @@ def compare_trueU_ecdfU_score(R, P, H, grid_size, theta, delta, df, verbose=True
         y1_train = student_t.ppf(u1_train, df)
         y2_train = student_t.ppf(u2_train, df)
 
-        F1_inv_ecdf_train = lambda u: np.quantile(y1_train, u)
-        F2_inv_ecdf_train = lambda u: np.quantile(y2_train, u)
+        F1_inv_ecdf_train = compute_ecdf_inverse(y1_train)
+        F2_inv_ecdf_train = compute_ecdf_inverse(y2_train)
 
         q_emp_train = np.quantile(y1_train + y2_train, 0.05)
 
-        Y1_emp_train = F1_inv_ecdf_train(U1)
-        Y2_emp_train = F2_inv_ecdf_train(U2)
-        W_emp_train = ((Y1_emp_train + Y2_emp_train) <= q_emp_train).astype(int)
 
-        F1_inv_true = lambda u: student_t.ppf(u, df)
-        F2_inv_true = lambda u: student_t.ppf(u, df)
+        W_emp_train = create_region(U1, U2, F1_inv=F1_inv_ecdf_train, F2_inv=F2_inv_ecdf_train, q_alpha=q_emp_train)
+
+        F1_inv_true = compute_true_t_inverse(df)
+        F2_inv_true = compute_true_t_inverse(df)
 
         q_true_train = np.quantile(F1_inv_true(u1_train) + F2_inv_true(u2_train), 0.05)
-        Y1_true = F1_inv_true(U1)
-        Y2_true = F2_inv_true(U2)
-        W_true_train = ((Y1_true + Y2_true) <= q_true_train).astype(int)
+
+        W_true_train = create_region(U1, U2, F1_inv=F1_inv_true, F2_inv=F2_inv_true, q_alpha=q_true_train)
 
         CS_emp_train, CLS_emp_train = compute_scores_over_region(copula_pdf, W_emp_train)
         CS_true_train, CLS_true_train = compute_scores_over_region(copula_pdf, W_true_train)
@@ -652,3 +746,182 @@ def compare_trueU_ecdfU_score(R, P, H, grid_size, theta, delta, df, verbose=True
         plt.show()
 
     return results
+
+
+###########################################################
+def compare_trueU_ecdfU_score_test_version(R, P, H, grid_size, df, verbose=True):
+    """
+    Compare scoring results using the ECDF-based region vs the true region
+    defined from known marginal inverse CDFs.
+
+    Parameters:
+        R                   : sample size
+        P                   : number of (H-day-ahead) forecasts to evaluate
+        H                   : forecast horizon
+        df                  : Degrees of freedom for Student-t
+        verbose             : If True, print score comparisons and/or show region plots
+
+    Returns:
+        A dictionary with CLS and CSL scores for both region types and region masks
+    """
+    # Param setup
+    n = R + P + H - 1
+    margin = 1 / (2 * grid_size)
+    u_seq = np.linspace(margin, 1 - margin, grid_size)
+    U1, U2 = np.meshgrid(u_seq, u_seq)
+
+    # Simulate true PITs from independent DGP
+    u1, u2 = simulate_independent_t_copula(n, df)
+
+    # Precompute t-inverse values once for oracle case
+    t_inv = student_t.ppf(u_seq, df)
+    Y1_oracle = np.tile(t_inv, (grid_size, 1))  # columns = u_seq
+    Y2_oracle = np.tile(t_inv[:, np.newaxis], (1, grid_size))  # rows = u_seq
+
+    # Create inverse oracle CDF and inverse ECDF funtions
+    y1 = student_t.ppf(u1, df)
+    y2 = student_t.ppf(u2, df)
+
+    # Precompute 1D inverse for ECDF
+    t_inv_ecdf = np.quantile(y1, u_seq)  # same for y2 in symmetric case
+
+    # Broadcast to grid
+    Y1_emp = np.tile(t_inv_ecdf, (grid_size, 1))
+    Y2_emp = np.tile(t_inv_ecdf[:, np.newaxis], (1, grid_size))
+
+    # Create quantiles
+    q_oracle = np.quantile(y1 + y2, 0.05)
+    q_ecdf = np.quantile(y1 + y2, 0.05)
+
+    # Create region masks
+    W_oracle = ((Y1_oracle + Y2_oracle) <= q_oracle).astype(int)
+    W_ecdf = ((Y1_emp + Y2_emp) <= q_ecdf).astype(int)
+
+    # Create pdf of two equally misspecified Student-t copulas
+    pdf_f = copula_pdf_student_t(U1.ravel(), U2.ravel(), rho=0.3, df=df).reshape(grid_size, grid_size)
+    pdf_g = copula_pdf_student_t(U1.ravel(), U2.ravel(), rho=-0.3, df=df).reshape(grid_size, grid_size)
+
+    # Compute scores for both copulas and both regions
+    CS_f_oracle, CLS_f_oracle = compute_scores_over_region(pdf_f, W_oracle)
+    CS_g_oracle, CLS_g_oracle = compute_scores_over_region(pdf_g, W_oracle)
+    CS_f_ecdf, CLS_f_ecdf = compute_scores_over_region(pdf_f, W_ecdf)
+    CS_g_ecdf, CLS_g_ecdf = compute_scores_over_region(pdf_g, W_ecdf)
+
+    results = [
+        CS_f_oracle, CLS_f_oracle,
+        CS_g_oracle, CLS_g_oracle,
+        CS_f_ecdf, CLS_f_ecdf,
+        CS_g_ecdf, CLS_g_ecdf,
+        W_oracle, W_ecdf
+    ]
+
+    if verbose:
+        print(f"CLS of f (oracle region):  {results[1]:.4f}")
+        print(f"CLS of f (ECDF region):  {results[5]:.4f}")
+        print(f"CLS of g (oracle region):  {results[3]:.4f}")
+        print(f"CLS of g (ECDF region):  {results[7]:.4f}")
+        print("")
+        print(f"CS of f (oracle region):  {results[0]:.4f}")
+        print(f"CS of f (ECDF region):  {results[4]:.4f}")
+        print(f"CS of g (oracle region):  {results[2]:.4f}")
+        print(f"CS of g (ECDF region):  {results[6]:.4f}")
+
+        print("PDF min:", np.min(pdf_f))
+        print("PDF max:", np.max(pdf_f))
+
+
+        plt.figure(figsize=(8, 6))
+        plt.contourf(U1, U2, np.log(pdf_f), cmap='Blues', levels=30)
+        plt.contour(U1, U2, W_ecdf, levels=[0.5], colors='red', linewidths=2, label="ECDF Region")
+        plt.contour(U1, U2, W_oracle, levels=[0.5], colors='blue', linewidths=2, label="Oracle Region")
+        plt.title("True vs ECDF Region Boundaries in PIT Space")
+        plt.xlabel("u1")
+        plt.ylabel("u2")
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+
+    return results
+
+
+###########################################################
+def run_single_t_loop(i, R, P, H, grid_size, df):
+    return i, *compare_trueU_ecdfU_score_test_version(R, P, H, grid_size, df, verbose=False)[-2:]
+
+
+###########################################################
+def compare_trueU_ecdfU_score_t_loop(iterations, grid_size, R, P, H, df, verbose=True):
+    """
+    Iterates the boundry creation and makes a mean boundary and confidence intervals
+
+    Parameters:
+        iterations          : number of iterations
+        verbose             : If True, print score comparisons and/or show region plots
+
+    Returns:
+        A plot with mean boundaries and confidence intervals
+    """
+    margin = 1 / (2 * grid_size)
+    u_seq = np.linspace(margin, 1 - margin, grid_size)
+    U1, U2 = np.meshgrid(u_seq, u_seq)
+
+    # Storage for region masks across repetitions
+    oracle_masks = np.zeros((iterations, grid_size, grid_size), dtype=int)
+    ecdf_masks = np.zeros((iterations, grid_size, grid_size), dtype=int)
+
+    pairwise_diffs = []
+
+    with ProcessPoolExecutor() as executor:
+        futures = [executor.submit(run_single_t_loop, i, R, P, H, grid_size, df) for i in range(iterations)]
+
+        # tracks feature completion
+        for future in tqdm(concurrent.futures.as_completed(futures), total=iterations, desc="Running simulations"):
+            i, W_oracle, W_ecdf = future.result()
+            oracle_masks[i] = W_oracle
+            ecdf_masks[i] = W_ecdf
+            diff = ecdf_masks[i] - oracle_masks[i]
+            mean_diff = np.mean(diff)
+            pairwise_diffs.append(mean_diff)
+
+    # Mean and CI bounds (across simulations)
+    mean_oracle = np.mean(oracle_masks, axis=0)
+    mean_ecdf = np.mean(ecdf_masks, axis=0)
+
+    # Compute 95% CI bounds
+    lower_oracle = np.percentile(oracle_masks, 2.5, axis=0)
+    upper_oracle = np.percentile(oracle_masks, 97.5, axis=0)
+
+    lower_ecdf = np.percentile(ecdf_masks, 2.5, axis=0)
+    upper_ecdf = np.percentile(ecdf_masks, 97.5, axis=0)
+
+    if verbose:
+        # Plot mean boundary with confidence interval overlays
+        fig, ax = plt.subplots(figsize=(8, 6))
+        ax.contour(U1, U2, mean_oracle, levels=[0.5], colors='blue', linewidths=2, label='Mean Oracle')
+        ax.contour(U1, U2, mean_ecdf, levels=[0.5], colors='red', linewidths=2, label='Mean ECDF')
+
+        # Plot CI boundaries
+        ax.contour(U1, U2, lower_oracle, levels=[0.5], colors='blue', linestyles='dashed', linewidths=1)
+        ax.contour(U1, U2, upper_oracle, levels=[0.5], colors='blue', linestyles='dashed', linewidths=1)
+        ax.contour(U1, U2, lower_ecdf, levels=[0.5], colors='red', linestyles='dashed', linewidths=1)
+        ax.contour(U1, U2, upper_ecdf, levels=[0.5], colors='red', linestyles='dashed', linewidths=1)
+
+        ax.set_title("Mean Region Boundaries and 95% CIs (Oracle vs ECDF)")
+        ax.set_xlabel("u1")
+        ax.set_ylabel("u2")
+        ax.grid(True)
+        plt.tight_layout()
+        plt.show()
+
+        plt.figure(figsize=(8, 5))
+        plt.hist(pairwise_diffs, bins=30, color='gray', edgecolor='black')
+        plt.axvline(np.mean(pairwise_diffs), color='red', linestyle='--', label=f"Mean = {np.mean(pairwise_diffs):.4f}")
+        plt.title("Distribution of Mean Pairwise ECDF - Oracle Region Differences")
+        plt.xlabel("Mean difference per simulation (ECDF - Oracle)")
+        plt.ylabel("Count")
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+
+    return mean_oracle, mean_ecdf, lower_oracle, upper_oracle, lower_ecdf, upper_ecdf

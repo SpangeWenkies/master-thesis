@@ -12,7 +12,9 @@ from utils.utils import WhiteNoiseSim
 from utils.utils import evaluate_mass_in_region
 from utils.utils import compute_scores_over_region
 from utils.utils import compare_trueU_ecdfU_score
-from config import iSeed, n, omega, alpha, beta, dist, nu, theta, delta, grid_size, R, P, H
+from utils.utils import compare_trueU_ecdfU_score_test_version
+from utils.utils import compare_trueU_ecdfU_score_t_loop
+from config import iSeed, n, omega, alpha, beta, dist, nu, theta, delta, grid_size, R, P, H, iterations
 
 
 
@@ -53,7 +55,11 @@ def main():
     # print(f"CS (Censored Likelihood Score):   {CS_true:.4f}")
 
 
-    results = compare_trueU_ecdfU_score(R, P, grid_size, theta, delta, nu)
+    # results = compare_trueU_ecdfU_score(R, P, H, grid_size, theta, delta, nu)
+
+    # test_results = compare_trueU_ecdfU_score_test_version(R, P, H, grid_size, nu)
+
+    loop_results = compare_trueU_ecdfU_score_t_loop(iterations, grid_size, R, P, H, nu)
 
 
 ###########################################################
