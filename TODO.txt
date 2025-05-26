@@ -3,12 +3,11 @@ To do morgen:
 Boundary uncertainty simulation study:
     Maak de restriction transformation met een andere copula dan de f of g voor size en power test credibility
     Repeat de 2010 onderzoek van diks et al, maar gebruik nu de true u'tjes ipv ecdf based als 'echte' gebruiken (size en power vergelijken)
-        --> true vs estimated boundary lijkt me nu ontzettend verschillend
+        --> score differences tussen de symmetricaly misspecified f en g zijn distributed rond 1 ipv 0
         --> check alle inputs en of ze daadwerkelijk de true of empirical zijn en of ze niet te veel approximation steps hebben
-        --> kijk wat te doen met de scores calculated en wat de diks et al study doet
-    Bootstrap ECDF-based regions om te evaluaten zodat je naar scoring variability kan kijken voor beide scoring rules
-	Kijk hoe fitten van de andere copulas effect heeft op empirical??? (true is bb7 en nu gebruiken we ook bb7 om de boundary te bekijken)
-	Kijk naar de orientation van de CS en CLS (negatieve score beter of positieve) -> trek 1 lijn
+        --> kijk wat diks et al study doet met de forecasted u en de rolling window
+	    --> Kijk hoe fitten van de andere copulas effect heeft op empirical??? (true is bb7 en nu gebruiken we ook bb7 om de boundary te bekijken)
+	    --> Kijk naar de orientation van de CS en CLS (negatieve score beter of positieve) -> trek 1 lijn
 
 Scriptie meeting 15-5:
     Bij schatten van de u_hats eerste keer worden ze in 2025 paper daarna gebruikt als de echte u'tjes. Als je die u'tjes al zet van tevoren weet je wat de echte zijn. Je kan dan de size en power plots maken met de echte utjes en met de u_hats gebruikt als echte u'tjes. Dan kijken wat het verschil is op de size en power plots.

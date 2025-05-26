@@ -9,6 +9,7 @@ from rpy2.robjects import numpy2ri
 from scipy.stats import gaussian_kde
 from scipy.stats import t as student_t
 from scipy.stats import multivariate_t
+from scipy.stats import ttest_1samp
 from tqdm import tqdm
 import scipy.optimize as opt
 from concurrent.futures import ProcessPoolExecutor
@@ -604,6 +605,38 @@ def copula_pdf_student_t(U1, U2, rho, df):
     return mv_pdf / denom
 
 
+def compute_score_differences(pdf_f, pdf_g, W_ecdf, W_oracle):
+    """
+    Compute score differences between two copulas f and g over ECDF and oracle regions.
+
+    Parameters:
+        pdf_f     : 2D numpy array, density of copula f on the grid
+        pdf_g     : 2D numpy array, density of copula g on the grid
+        W_ecdf    : 2D numpy binary mask for ECDF-based region
+        W_oracle  : 2D numpy binary mask for Oracle region
+
+    Returns:
+        A dictionary with CLS and CS differences (f - g) for both regions
+    """
+    CS_f_oracle, CLS_f_oracle = compute_scores_over_region(pdf_f, W_oracle)
+    CS_g_oracle, CLS_g_oracle = compute_scores_over_region(pdf_g, W_oracle)
+    CS_f_ecdf, CLS_f_ecdf = compute_scores_over_region(pdf_f, W_ecdf)
+    CS_g_ecdf, CLS_g_ecdf = compute_scores_over_region(pdf_g, W_ecdf)
+
+    results = {
+        "CLS_diff_ecdf": CLS_f_ecdf - CLS_g_ecdf,
+        "CLS_diff_oracle": CLS_f_oracle - CLS_g_oracle,
+        "CS_diff_ecdf": CS_f_ecdf - CS_g_ecdf,
+        "CS_diff_oracle": CS_f_oracle - CS_g_oracle,
+    }
+
+    return results
+
+def rejection_rate(differences, alpha=0.05):
+    t_stat, p_val = ttest_1samp(differences, popmean=0)
+    reject = p_val < alpha
+    return reject, p_val
+
 ###########################################################
 def compare_trueU_ecdfU_score(R, P, H, grid_size, theta, delta, df, verbose=True):
     """
@@ -806,12 +839,18 @@ def compare_trueU_ecdfU_score_test_version(R, P, H, grid_size, df, verbose=True)
     CS_g_oracle, CLS_g_oracle = compute_scores_over_region(pdf_g, W_oracle)
     CS_f_ecdf, CLS_f_ecdf = compute_scores_over_region(pdf_f, W_ecdf)
     CS_g_ecdf, CLS_g_ecdf = compute_scores_over_region(pdf_g, W_ecdf)
+    CLS_diff_ecdf = CLS_f_ecdf - CLS_g_ecdf
+    CLS_diff_oracle = CLS_f_oracle - CLS_g_oracle
+    CS_diff_ecdf = CS_f_ecdf - CS_g_ecdf
+    CS_diff_oracle = CS_f_oracle - CS_g_oracle
 
     results = [
         CS_f_oracle, CLS_f_oracle,
         CS_g_oracle, CLS_g_oracle,
         CS_f_ecdf, CLS_f_ecdf,
         CS_g_ecdf, CLS_g_ecdf,
+        CLS_diff_ecdf, CLS_diff_oracle,
+        CS_diff_ecdf, CS_diff_oracle,
         W_oracle, W_ecdf
     ]
 
@@ -825,9 +864,12 @@ def compare_trueU_ecdfU_score_test_version(R, P, H, grid_size, df, verbose=True)
         print(f"CS of f (ECDF region):  {results[4]:.4f}")
         print(f"CS of g (oracle region):  {results[2]:.4f}")
         print(f"CS of g (ECDF region):  {results[6]:.4f}")
+        print("")
+        print(f"CLS difference of ecdf case (f-g):  {results[8]:.4f}")
+        print(f"CLS difference of oracle case (f-g):  {results[9]:.4f}")
+        print(f"CS difference of ecdf case (f-g):  {results[10]:.4f}")
+        print(f"CS difference of oracle case (f-g):  {results[11]:.4f}")
 
-        print("PDF min:", np.min(pdf_f))
-        print("PDF max:", np.max(pdf_f))
 
 
         plt.figure(figsize=(8, 6))
@@ -846,7 +888,7 @@ def compare_trueU_ecdfU_score_test_version(R, P, H, grid_size, df, verbose=True)
 
 ###########################################################
 def run_single_t_loop(i, R, P, H, grid_size, df):
-    return i, *compare_trueU_ecdfU_score_test_version(R, P, H, grid_size, df, verbose=False)[-2:]
+    return i, *compare_trueU_ecdfU_score_test_version(R, P, H, grid_size, df, verbose=False)[-6:]
 
 
 ###########################################################
@@ -868,6 +910,10 @@ def compare_trueU_ecdfU_score_t_loop(iterations, grid_size, R, P, H, df, verbose
     # Storage for region masks across repetitions
     oracle_masks = np.zeros((iterations, grid_size, grid_size), dtype=int)
     ecdf_masks = np.zeros((iterations, grid_size, grid_size), dtype=int)
+    CLS_diffs_ecdf = np.zeros(iterations)
+    CLS_diffs_oracle = np.zeros(iterations)
+    CS_diffs_ecdf = np.zeros(iterations)
+    CS_diffs_oracle = np.zeros(iterations)
 
     pairwise_diffs = []
 
@@ -876,12 +922,17 @@ def compare_trueU_ecdfU_score_t_loop(iterations, grid_size, R, P, H, df, verbose
 
         # tracks feature completion
         for future in tqdm(concurrent.futures.as_completed(futures), total=iterations, desc="Running simulations"):
-            i, W_oracle, W_ecdf = future.result()
+            i, CLS_diff_ecdf, CLS_diff_oracle, CS_diff_ecdf, CS_diff_oracle, W_oracle, W_ecdf = future.result()
             oracle_masks[i] = W_oracle
             ecdf_masks[i] = W_ecdf
             diff = ecdf_masks[i] - oracle_masks[i]
             mean_diff = np.mean(diff)
             pairwise_diffs.append(mean_diff)
+            CLS_diffs_ecdf[i] = CLS_diff_ecdf
+            CLS_diffs_oracle[i] = CLS_diff_oracle
+            CS_diffs_ecdf[i] = CS_diff_ecdf
+            CS_diffs_oracle[i] = CS_diff_oracle
+
 
     # Mean and CI bounds (across simulations)
     mean_oracle = np.mean(oracle_masks, axis=0)
@@ -924,4 +975,27 @@ def compare_trueU_ecdfU_score_t_loop(iterations, grid_size, R, P, H, df, verbose
         plt.tight_layout()
         plt.show()
 
+        plt.figure(figsize=(8, 5))
+        plt.hist(CLS_diffs_ecdf, bins=30, color='gray', edgecolor='black')
+        plt.axvline(np.mean(CLS_diffs_ecdf), color='red', linestyle='--', label=f"Mean = {np.mean(CLS_diffs_ecdf):.4f}")
+        plt.title("Distribution of ECDF CLS Score Differences (f-g)")
+        plt.xlabel("Difference per simulation (f-g)")
+        plt.ylabel("Count")
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+
+        plt.figure(figsize=(8, 5))
+        plt.hist(CLS_diffs_oracle, bins=30, color='gray', edgecolor='black')
+        plt.axvline(np.mean(CLS_diffs_oracle), color='red', linestyle='--', label=f"Mean = {np.mean(CLS_diffs_oracle):.4f}")
+        plt.title("Distribution of Oracle CLS Score Differences (f-g)")
+        plt.xlabel("Difference per simulation (f-g)")
+        plt.ylabel("Count")
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+
     return mean_oracle, mean_ecdf, lower_oracle, upper_oracle, lower_ecdf, upper_ecdf
+
