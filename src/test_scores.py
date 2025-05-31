@@ -1,10 +1,39 @@
 from utils.utils import *
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from tqdm import tqdm
 
 n = 1000
 df = 5
 f_rho = -0.3
 g_rho = 0.3
 p_rho = 0
+reps = 1000
+
+def plot_histogram_kde(data_f, data_g, data_p, title):
+    kde_f = gaussian_kde(data_f)
+    kde_g = gaussian_kde(data_g)
+    kde_p = gaussian_kde(data_p)
+
+    x_min = min(data_f.min(), data_g.min(), data_p.min())
+    x_max = max(data_f.max(), data_g.max(), data_p.max())
+    x_grid = np.linspace(x_min, x_max, 500)
+
+    plt.figure(figsize=(10, 6))
+    plt.hist(data_f, bins=30, alpha=0.3, density=True, label='Model f (rho=-0.3)', color='blue')
+    plt.hist(data_g, bins=30, alpha=0.3, density=True, label='Model g (rho=0.3)', color='green')
+    plt.hist(data_p, bins=30, alpha=0.3, density=True, label='Model p (rho=0)', color='red')
+
+    plt.plot(x_grid, kde_f(x_grid), label='KDE f', linewidth=2, color='blue')
+    plt.plot(x_grid, kde_g(x_grid), label='KDE g', linewidth=2, color='green')
+    plt.plot(x_grid, kde_p(x_grid), label='KDE p', linewidth=2, color='red')
+
+    plt.title(f"{title} Score Distribution over {len(data_f)} Repetitions")
+    plt.xlabel("Score")
+    plt.ylabel("Density")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
 
 def region_weight_function(u, q_threshold, df):
     """
@@ -32,25 +61,43 @@ def region_weight_function(u, q_threshold, df):
 
     return ((Y1 + Y2) <= q_true).astype(int)
 
-cov = [[1, 0], [0, 1]]
-samples = multivariate_t.rvs(loc=[0, 0], shape=cov, df=df, size=n)
-sim_u = student_t.cdf(samples, df=df)  # Convert to PITs
+def simulate_one_rep(n, df, f_rho, g_rho, p_rho):
+    samples = multivariate_t.rvs(loc=[0, 0], shape=[[1, 0], [0, 1]], df=df, size=n)
+    sim_u = student_t.cdf(samples, df=df)
+    w = region_weight_function(sim_u, 0.05, df)
 
-w = region_weight_function(sim_u, 0.05, df)
+    return {
+        "LogS_f": LogS_student_t_copula(sim_u, f_rho, df),
+        "LogS_g": LogS_student_t_copula(sim_u, g_rho, df),
+        "LogS_p": LogS_student_t_copula(sim_u, p_rho, df),
+        "CS_f": CS_student_t_copula(sim_u, f_rho, df, w),
+        "CS_g": CS_student_t_copula(sim_u, g_rho, df, w),
+        "CS_p": CS_student_t_copula(sim_u, p_rho, df, w),
+        "CLS_f": CLS_student_t_copula(sim_u, f_rho, df, w),
+        "CLS_g": CLS_student_t_copula(sim_u, g_rho, df, w),
+        "CLS_p": CLS_student_t_copula(sim_u, p_rho, df, w),
+    }
+if __name__ == '__main__':
+    results = []
 
-print(f"LogS of f (DGP = p): ", LogS_student_t_copula(sim_u, f_rho, df))
-print(f"LogS of g (DGP = p): ", LogS_student_t_copula(sim_u, g_rho, df))
-print(f"LogS of p (DGP = p): ", LogS_student_t_copula(sim_u, p_rho, df))
+    with ProcessPoolExecutor() as executor:
+        futures = [executor.submit(simulate_one_rep, n, df, f_rho, g_rho, p_rho) for _ in range(reps)]
 
-print(f"CS of f (DGP = p): ", CS_student_t_copula(sim_u, f_rho, df, w))
-print(f"CS of g (DGP = p): ", CS_student_t_copula(sim_u, g_rho, df, w))
-print(f"CS of p (DGP = p): ", CS_student_t_copula(sim_u, p_rho, df, w))
+        for future in tqdm(as_completed(futures), total=reps, desc="Running simulations"):
+            results.append(future.result())
 
-print(f"CLS of f (DGP = p): ", CLS_student_t_copula(sim_u, f_rho, df, w))
-print(f"CLS of g (DGP = p): ", CLS_student_t_copula(sim_u, g_rho, df, w))
-print(f"CLS of p (DGP = p): ", CLS_student_t_copula(sim_u, p_rho, df, w))
+    vecLogS_student_t_copula_f = np.array([res["LogS_f"] for res in results])
+    vecLogS_student_t_copula_g = np.array([res["LogS_g"] for res in results])
+    vecLogS_student_t_copula_p = np.array([res["LogS_p"] for res in results])
 
+    vecCS_student_t_copula_f = np.array([res["CS_f"] for res in results])
+    vecCS_student_t_copula_g = np.array([res["CS_g"] for res in results])
+    vecCS_student_t_copula_p = np.array([res["CS_p"] for res in results])
 
+    vecCLS_student_t_copula_f = np.array([res["CLS_f"] for res in results])
+    vecCLS_student_t_copula_g = np.array([res["CLS_g"] for res in results])
+    vecCLS_student_t_copula_p = np.array([res["CLS_p"] for res in results])
 
-# CS_student_t_copula(sim_u, rho, df, w)
-# CLS_student_t_copula(sim_u, rho, df, w)
+    plot_histogram_kde(vecLogS_student_t_copula_f, vecLogS_student_t_copula_g, vecLogS_student_t_copula_p, "Logarithmic Score (LogS)")
+    plot_histogram_kde(vecCS_student_t_copula_f, vecCS_student_t_copula_g, vecCS_student_t_copula_p, "Censored Log Score (CS)")
+    plot_histogram_kde(vecCLS_student_t_copula_f, vecCLS_student_t_copula_g, vecCLS_student_t_copula_p, "Conditional Log Score (CLS)")
