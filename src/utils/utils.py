@@ -86,6 +86,116 @@ def GARCHSim(iT, vGARCHParams, iP, vDistrParams, sDistrName):
     vY = vY[iR:]
     return vY
 
+###########################################################
+
+def student_t_copula_pdf_from_PITs(u, rho, df):
+    """
+        Calculate copula pdf from observed PITs and given a correlation coefficient rho
+
+        Inputs:
+            u :     np.ndarray
+                        An (n, 2) array of PITs, each in (0,1)
+            rho :   Correlation parameter [-1,1]
+            df :    degrees of freedom t distribution
+        Outputs:
+            student-t copula pdf of observed marginals
+    """
+
+    # Convert uniform PITs to quantiles of t-distribution
+    x = student_t.ppf(u[:, 0], df)
+    y = student_t.ppf(u[:, 1], df)
+
+    # Build covariance matrix
+    cov = np.array([[1, rho], [rho, 1]])
+
+    # Multivariate t PDF
+    mv_pdf = multivariate_t.pdf(np.stack([x, y], axis=-1), df=df, shape=cov)
+
+    # Marginal t PDFs
+    denom = student_t.pdf(x, df) * student_t.pdf(y, df)
+
+    return mv_pdf / denom
+
+
+def LogS_student_t_copula(u, rho, df):
+    """
+    Purpose:
+        Regular Logarithmic scoring rule on student t copula pdf
+    Inputs:
+            u :     np.ndarray
+                        An (n, 2) array of PITs, each in (0,1)
+            rho :   Correlation parameter [-1,1]
+            df :    degrees of freedom t distribution
+
+    Return value:
+        sum(np.log(mF))     sum of log of all mF matrix points
+
+    Output:
+        iT x iRep matrix with calculated log scores
+    """
+
+    mF = student_t_copula_pdf_from_PITs(u, rho, df)
+    mF[mF == 0] = 1e-100  # avoid numerical zeros
+    return sum(np.log(mF))
+
+def CS_student_t_copula(u, rho, df, w):
+    """
+    Purpose:
+        Censored Logarithmic scoring rule on student t copula pdf
+    Inputs:
+            u :     np.ndarray
+                        An (n, 2) array of PITs, each in (0,1)
+            rho :   Correlation parameter [-1,1]
+            df :    degrees of freedom t distribution
+            w :     (n,) array of weights (binary or smooth)
+
+    Return value:
+        w * log_mF + (1 - w) * log_Fw_bar  weighted log of mF * w plus inverse weighted log of Fw_bar
+
+    Output:
+        scalar of calculated censored log scores
+    """
+
+    mF = student_t_copula_pdf_from_PITs(u, rho, df)
+    mF[mF == 0] = 1e-100  # avoid numerical zeros
+    log_mF = np.log(mF)
+
+    # Censored score uses region average as a constant reference
+    Fw_bar = np.sum(mF * w) / np.sum(w)
+    Fw_bar = max(Fw_bar, 1e-100)
+    log_Fw_bar = np.log(Fw_bar)
+    return np.sum(w * log_mF + (1 - w) * log_Fw_bar)
+
+def CLS_student_t_copula(u, rho, df, w):
+    """
+    Purpose:
+        Conditional Logarithmic scoring rule on student t copula pdf
+    Inputs:
+            u :     np.ndarray
+                        An (n, 2) array of PITs, each in (0,1)
+            rho :   Correlation parameter [-1,1]
+            df :    degrees of freedom t distribution
+            w :     (n,) array of weights (binary or smooth)
+
+    Return value:
+        ...
+
+    Output:
+        scalar of calculated conditional log scores
+    """
+
+    mF = student_t_copula_pdf_from_PITs(u, rho, df)
+    mF[mF == 0] = 1e-100
+    # Estimate mass outside region: bar(Fw) = P(y not in A)
+    F_total = np.sum(mF)
+    F_outside = np.sum(mF * (1 - w))
+    F_outside = min(F_outside, F_total - 1e-100)  # avoid division by 0 or log(0)
+
+    # log(1 - mass_inside) = log(mass_outside / total)
+    log_1_minus_Fw = np.log(F_outside / F_total + 1e-100)
+
+    return np.sum(w * (np.log(mF) - log_1_minus_Fw))
+
 
 ###########################################################
 ### dLL= AvgNLnLGARCH(vP, vY, mX)

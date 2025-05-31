@@ -18,6 +18,7 @@ Scriptie meeting 15-5:
 
 Code algemeen:
 	Als too many configs maak dan een class of een namespace
+	CS EN CLS ZIJN FOUT
 
 Scriptie algemeen:
 BLIJF SCHRIJVEN IN OVERLEAF
