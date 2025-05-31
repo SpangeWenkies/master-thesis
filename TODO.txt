@@ -22,7 +22,7 @@ Code algemeen:
 Scriptie algemeen:
 BLIJF SCHRIJVEN IN OVERLEAF
     1. Maak methodologie robuust -> begin bij transcriben van de meeting
-    2. Maak de collection van papers om te citeren groter (zotero), heb al een aantal gevonden met chat
+    2. Maak de collection van papers om te citeren groter (zotero), heb al een aantal gevonden met chat, vind image recog paper
     3. Stop notes in markdown en in obsidian (of gewoon in de repository) voor future reference
     4. Bekijk volledige code van Ramon en importeer functies om te gebruiken
     5. Gebruik alle info om de methodologie te maken in code
