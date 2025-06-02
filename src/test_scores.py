@@ -10,6 +10,16 @@ p_rho = 0
 reps = 1000
 
 def plot_histogram_kde(data_f, data_g, data_p, title):
+    """
+        Plots histogram and KDE lines
+
+        Inputs:
+            data_f, data_g, data_p  :   The two candidate dist and true dist
+            title :                     The name of the score for which the histogram will be plotted
+
+        Returns:
+            histograms and KDE lines overlays
+        """
     kde_f = gaussian_kde(data_f)
     kde_g = gaussian_kde(data_g)
     kde_p = gaussian_kde(data_p)
@@ -62,6 +72,15 @@ def region_weight_function(u, q_threshold, df):
     return ((Y1 + Y2) <= q_true).astype(int)
 
 def simulate_one_rep(n, df, f_rho, g_rho, p_rho):
+    """
+        Helper function for simulating one repetition in multi-threading
+
+        Inputs:
+            inputs for all functions used in one repetition
+
+        Returns:
+            different scores of the candidates and true DGP
+        """
     samples = multivariate_t.rvs(loc=[0, 0], shape=[[1, 0], [0, 1]], df=df, size=n)
     sim_u = student_t.cdf(samples, df=df)
     w = region_weight_function(sim_u, 0.05, df)

@@ -1,13 +1,30 @@
+To do vandaag:
+    #DONE# het maken van de candidates en log score
+    #DONE# true DGP copula maakt oracle u'tjes
+
+    Kijk in code Ramon hoe de true dgp defined is
+
+    Kijk naar code Ramon waar de estimation van de u'tjes staat
+        Dit is waarschijnlijk waar van observed marginals x en y naar u'tjes voor copula wordt gegaan
+        Wat is de transformation hier? np.quantile() of "rank .../(n+1)""
+            Stel np.quatile(), moet ik dan eerst quantile function met 10e+6 reps maken om extra uncertainty uit te sluiten?
+        Implement deze estimated u'tjes in eigen code
+
+    Laat de score functions de copula pdf met deze u'tjes ingevuld bekijken
+    Plot deze scores van de candidates over de oracle case histogram en KDE lines
+
 To do morgen:
 
-Boundary uncertainty simulation study:
-    Maak de restriction transformation met een andere copula dan de f of g voor size en power test credibility
+
+Boundary uncertainty extension:
+    Maak de restriction transformation met een andere copula dan de f of g voor size en power test credibility (Mitchell & Wealle example)
+    Kijk naar andere weight function dan I
+
+Simulation study:
     Repeat de 2010 onderzoek van diks et al, maar gebruik nu de true u'tjes ipv ecdf based als 'echte' gebruiken (size en power vergelijken)
         --> score differences tussen de symmetricaly misspecified f en g zijn distributed rond 1 ipv 0
-        --> check alle inputs en of ze daadwerkelijk de true of empirical zijn en of ze niet te veel approximation steps hebben
         --> kijk wat diks et al study doet met de forecasted u en de rolling window
 	    --> Kijk hoe fitten van de andere copulas effect heeft op empirical??? (true is bb7 en nu gebruiken we ook bb7 om de boundary te bekijken)
-	    --> Kijk naar de orientation van de CS en CLS (negatieve score beter of positieve) -> trek 1 lijn
 
 Scriptie meeting 15-5:
     Bij schatten van de u_hats eerste keer worden ze in 2025 paper daarna gebruikt als de echte u'tjes. Als je die u'tjes al zet van tevoren weet je wat de echte zijn. Je kan dan de size en power plots maken met de echte utjes en met de u_hats gebruikt als echte u'tjes. Dan kijken wat het verschil is op de size en power plots.
@@ -18,13 +35,13 @@ Scriptie meeting 15-5:
 
 Code algemeen:
 	Als too many configs maak dan een class of een namespace
-	CS EN CLS ZIJN FOUT
+	#DONE# CS EN CLS ZIJN FOUT
 
 Scriptie algemeen:
 BLIJF SCHRIJVEN IN OVERLEAF
-    1. Maak methodologie robuust -> begin bij transcriben van de meeting
+    1. Maak methodologie robuust -> #DONE# begin bij transcriben van de meeting
     2. Maak de collection van papers om te citeren groter (zotero), heb al een aantal gevonden met chat, vind image recog paper
-    3. Stop notes in markdown en in obsidian (of gewoon in de repository) voor future reference
+    3. Stop notes in markdown in de repository voor future reference
     4. Bekijk volledige code van Ramon en importeer functies om te gebruiken
     5. Gebruik alle info om de methodologie te maken in code
 
@@ -40,8 +57,8 @@ Notes/vragen:
         GARCH deel heeft te maken met time dependence, niet cross sectional wat volgens mij alleen zou worden bekeken in deze simulation setup.
         Overschakelen op student-t marginals en analytical inverse CDF?
 
-    Wat zijn normale waardes die de copula density aanneemt wanneer het likely is dat er joint dependence is? PLot geeft 40+ als hoge waardes.
-        Lijkt me dat 1 independence is en dan 0-1 unlikely en 1+ likely
+    Wat zijn normale waardes die de copula density aanneemt wanneer het likely is dat er joint dependence is?
+        --> Lijkt me dat 1 independence is en dan 0-1 unlikely en 1+ likely, kan infinite worden
 
     Wat is het numerically integraten en waarom is dit belangrijk?
         Stel grid is op [0,1]^2 en 300x300 dan heeft elke cell oppervlakte (1/300)^2. Moet deze constant ook keer de uiteindelijke sum (integral approximation)

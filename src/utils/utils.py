@@ -88,9 +88,9 @@ def GARCHSim(iT, vGARCHParams, iP, vDistrParams, sDistrName):
 
 ###########################################################
 
-def student_t_copula_pdf_from_PITs(u, rho, df):
+def student_t_copula_pdf_from_PITs(u, rho, df, oracle=True):
     """
-        Calculate copula pdf from observed PITs and given a correlation coefficient rho
+        Calculate student t copula pdf from given PITs and correlation coefficient rho
 
         Inputs:
             u :     np.ndarray
@@ -98,12 +98,20 @@ def student_t_copula_pdf_from_PITs(u, rho, df):
             rho :   Correlation parameter [-1,1]
             df :    degrees of freedom t distribution
         Outputs:
-            student-t copula pdf of observed marginals
+            student-t copula pdf
     """
+    if oracle:
+        # Convert uniform PITs to quantiles of t-distribution (known is they come from t-dist)
+        x = student_t.ppf(u[:, 0], df)
+        y = student_t.ppf(u[:, 1], df)
+    else:
+        # Convert uniform PITs using ECDF (original distribution is unknown)
+        # We observe the true residual series x and y from the copula + specified marginals (or just innovations)
+        x = student_t.ppf(u[:, 0], df)
+        y = student_t.ppf(u[:, 1], df)
+        # We then PIT these x and y into \hat{u_1} and \hat{u_2}
 
-    # Convert uniform PITs to quantiles of t-distribution
-    x = student_t.ppf(u[:, 0], df)
-    y = student_t.ppf(u[:, 1], df)
+        ...
 
     # Build covariance matrix
     cov = np.array([[1, rho], [rho, 1]])
@@ -516,10 +524,10 @@ def inverse_ecdf(u, original_resid):
 
         Inputs:
             u                   input series of PITs
-            original_resid     original AR-GARCH residuals
+            original_resid      original specified marginal residuals
 
         Output:
-            GARCH style residuals respecting BB7 dependence
+            specified marginal style residuals respecting copula dependence
 
     """
     sorted_resid = np.sort(original_resid)
