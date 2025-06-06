@@ -88,7 +88,26 @@ def GARCHSim(iT, vGARCHParams, iP, vDistrParams, sDistrName):
 
 ###########################################################
 
-def student_t_copula_pdf_from_PITs(u, rho, df, oracle=True):
+def ecdf_transform(Y):
+    """
+    Purpose: Apply ECDF transform to each column of Y to obtain PITs
+    :param Y:   np.ndarray of shape (n,d) - simulated marginal residuals (standardized)
+    :return: U_hat: np.ndarray of shape (n,d) - ECDF based PITs
+    """
+
+    n, d = Y.shape
+    U_hat = np.zeros_like(Y)
+
+    for j in range(d):
+        # rankdata assigns rank 1 to the smallest value
+        ranks = rankdata(Y[:, j], method='ordinal')
+        U_hat[:, j] = ranks / (n+2) # n+2 makes sure we do not end up placing a value exactly and near 1 or 0
+
+    return U_hat
+
+###########################################################
+
+def student_t_copula_pdf_from_PITs(u, rho, df):
     """
         Calculate student t copula pdf from given PITs and correlation coefficient rho
 
@@ -100,18 +119,11 @@ def student_t_copula_pdf_from_PITs(u, rho, df, oracle=True):
         Outputs:
             student-t copula pdf
     """
-    if oracle:
-        # Convert uniform PITs to quantiles of t-distribution (known is they come from t-dist)
-        x = student_t.ppf(u[:, 0], df)
-        y = student_t.ppf(u[:, 1], df)
-    else:
-        # Convert uniform PITs using ECDF (original distribution is unknown)
-        # We observe the true residual series x and y from the copula + specified marginals (or just innovations)
-        x = student_t.ppf(u[:, 0], df)
-        y = student_t.ppf(u[:, 1], df)
-        # We then PIT these x and y into \hat{u_1} and \hat{u_2}
 
-        ...
+    # Convert uniform PITs to quantiles of t-distribution (known is they come from t-dist)
+    x = student_t.ppf(u[:, 0], df)
+    y = student_t.ppf(u[:, 1], df)
+
 
     # Build covariance matrix
     cov = np.array([[1, rho], [rho, 1]])
@@ -124,6 +136,130 @@ def student_t_copula_pdf_from_PITs(u, rho, df, oracle=True):
 
     return mv_pdf / denom
 
+###########################################################
+
+def bb7_copula_pdf_from_PITs(u, theta, delta):
+    """
+        Calculate bb7 copula pdf from given PITs and bb7 parameters
+
+        Inputs:
+            u :     np.ndarray
+                        An (n, 2) array of PITs, each in (0,1)
+            theta :   dependence parameter (>1)
+            delta :   tail asymmetry parameter (>1)
+        Outputs:
+            student-t copula pdf
+    """
+
+    numpy2ri.activate()
+
+    # Inject the u1, u2, theta, delta variables into R
+    ro.globalenv['u_data'] = u
+    ro.globalenv['theta'] = theta
+    ro.globalenv['delta'] = delta
+
+    # R code
+    ro.r('''
+        library(VineCopula)
+        set.seed(12085278)
+
+        # Define BB7 copula with initial parameters
+        cop_model <- BiCop(family = 17, par = theta, par2 = delta)
+
+        # Evaluate PDF over a grid
+        cop_pdf <- BiCopPDF(u_data[,1], u_data[,2], cop_model)
+        ''')
+
+    true_pdf = np.array(ro.r('cop_pdf'))
+
+    return true_pdf
+
+###########################################################
+
+def LogS_bb7(u, theta, delta):
+    """
+        Purpose:
+        Regular Logarithmic scoring rule on bb7 copula pdf
+    Inputs:
+            u :     np.ndarray
+                        An (n, 2) array of PITs, each in (0,1)
+            theta :   dependence parameter (>1)
+            delta :    tail assymetry parameter (>1)
+
+    Return value:
+        sum(np.log(mF))     sum of log of all mF matrix points
+
+    Output:
+        iT x iRep matrix with calculated log scores
+    """
+
+    mF = bb7_copula_pdf_from_PITs(u, theta, delta)
+    mF[mF == 0] = 1e-100  # avoid numerical zeros
+    return sum(np.log(mF))
+
+###########################################################
+
+def CS_bb7(u, theta, delta, w):
+    """
+    Purpose:
+        Censored Logarithmic scoring rule on student t copula pdf
+    Inputs:
+            u :     np.ndarray
+                        An (n, 2) array of PITs, each in (0,1)
+            theta :   Correlation parameter [-1,1]
+            delta :    degrees of freedom t distribution
+            w :     (n,) array of weights (binary or smooth)
+
+    Return value:
+        w * log_mF + (1 - w) * log_Fw_bar  weighted log of mF * w plus inverse weighted log of Fw_bar
+
+    Output:
+        scalar of calculated censored log scores
+    """
+
+    mF = bb7_copula_pdf_from_PITs(u, theta, delta)
+    mF[mF == 0] = 1e-100  # avoid numerical zeros
+    log_mF = np.log(mF)
+
+    # Censored score uses region average as a constant reference
+    Fw_bar = np.sum(mF * w) / np.sum(w)
+    Fw_bar = max(Fw_bar, 1e-100)
+    log_Fw_bar = np.log(Fw_bar)
+    return np.sum(w * log_mF + (1 - w) * log_Fw_bar)
+
+###########################################################
+
+def CLS_bb7(u, theta, delta, w):
+    """
+    Purpose:
+        Conditional Logarithmic scoring rule on student t copula pdf
+    Inputs:
+            u :     np.ndarray
+                        An (n, 2) array of PITs, each in (0,1)
+            theta :   Correlation parameter [-1,1]
+            delta :    degrees of freedom t distribution
+            w :     (n,) array of weights (binary or smooth)
+
+    Return value:
+        ...
+
+    Output:
+        scalar of calculated conditional log scores
+    """
+
+    mF = bb7_copula_pdf_from_PITs(u, theta, delta)
+    mF[mF == 0] = 1e-100
+    # Estimate mass outside region: bar(Fw) = P(y not in A)
+    F_total = np.sum(mF)
+    F_outside = np.sum(mF * (1 - w))
+    F_outside = min(F_outside, F_total - 1e-100)  # avoid division by 0 or log(0)
+
+    # log(1 - mass_inside) = log(mass_outside / total)
+    log_1_minus_Fw = np.log(F_outside / F_total + 1e-100)
+
+    return np.sum(w * (np.log(mF) - log_1_minus_Fw))
+
+###########################################################
 
 def LogS_student_t_copula(u, rho, df):
     """
@@ -145,6 +281,8 @@ def LogS_student_t_copula(u, rho, df):
     mF = student_t_copula_pdf_from_PITs(u, rho, df)
     mF[mF == 0] = 1e-100  # avoid numerical zeros
     return sum(np.log(mF))
+
+###########################################################
 
 def CS_student_t_copula(u, rho, df, w):
     """
@@ -173,6 +311,8 @@ def CS_student_t_copula(u, rho, df, w):
     Fw_bar = max(Fw_bar, 1e-100)
     log_Fw_bar = np.log(Fw_bar)
     return np.sum(w * log_mF + (1 - w) * log_Fw_bar)
+
+###########################################################
 
 def CLS_student_t_copula(u, rho, df, w):
     """
@@ -203,7 +343,6 @@ def CLS_student_t_copula(u, rho, df, w):
     log_1_minus_Fw = np.log(F_outside / F_total + 1e-100)
 
     return np.sum(w * (np.log(mF) - log_1_minus_Fw))
-
 
 ###########################################################
 ### dLL= AvgNLnLGARCH(vP, vY, mX)
@@ -292,6 +431,7 @@ def GARCHEstim(vGARCHParams0, iP, vY):
 def resid_to_unif_PIT_ECDF(residuals):
     """
         Purpose:
+            PROBABLY WRONG
             Converts residuals to uniform margins implicitly using empirical CDF
             u_t = F_hat(resid_t) = rank(resid_t) / (n+1)
             Here (n+1) to correct for bias
