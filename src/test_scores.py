@@ -1,6 +1,3 @@
-from matplotlib.mlab import detrend_linear
-
-from src.utils.utils import sim_clayton_PITs
 from utils.utils import *
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from tqdm import tqdm
@@ -11,32 +8,56 @@ df = 5
 f_rho = -0.3
 g_rho = 0.3
 p_rho = 0
-theta_clayton = 2
+theta_sGumbel = 2
 # delta = 3
 reps = 10000
 
-# Simulate oracle and ECDF PITs using full process
-oracle_samples_list = []
+# === Oracle KL matching ===
 
-for _ in range(reps):
-    sim_u_clayton = sim_clayton_PITs(n, theta_clayton)
-    oracle_samples_list.append(sim_u_clayton)
+# Step 1: Simulate once and reuse
+oracle_samples_list = [sim_sGumbel_PITs(n, theta_sGumbel) for _ in range(reps)]
+oracle_masks_list = [region_weight_function_for_kl_match(u, 0.05, df=df) for u in oracle_samples_list]
 
-pdf_clayton = lambda u: clayton_copula_pdf_from_PITs(u, theta_clayton)
+# Define PDFs
+pdf_sGumbel = lambda u: sGumbel_copula_pdf_from_PITs(u, theta_sGumbel)
 pdf_g = lambda u: student_t_copula_pdf_from_PITs(u, rho=g_rho, df=df)
 
-# === Oracle KL matching ===
-kl_oracle_clayton_g_list = [estimate_kl_divergence_copulas(u, pdf_clayton, pdf_g) for u in oracle_samples_list]
-target_kl_oracle = np.mean(kl_oracle_clayton_g_list)
+# Step 2: Full KL divergence (global)
+kl_oracle_sGumbel_g_list = [
+    estimate_kl_divergence_copulas(u, pdf_sGumbel, pdf_g)
+    for u in oracle_samples_list
+]
+target_kl_oracle = np.mean(kl_oracle_sGumbel_g_list)
+
+# Step 3: Localized KL divergence (in region)
+localized_kl_list = [
+    estimate_localized_kl(u, pdf_sGumbel, pdf_g, mask)
+    for u, mask in zip(oracle_samples_list, oracle_masks_list)
+]
+target_local_kl_oracle = np.mean(localized_kl_list)
+
+# === Optimization ===
 
 def bb1_oracle_objective(params):
     theta, delta = params
     if theta <= 0 or delta < 1:
         return np.inf
     pdf_bb1 = lambda u: bb1_copula_pdf_from_PITs(u, theta, delta)
-    kl_vals = [estimate_kl_divergence_copulas(u, pdf_clayton, pdf_bb1) for u in oracle_samples_list]
+    kl_vals = [estimate_kl_divergence_copulas(u, pdf_sGumbel, pdf_bb1) for u in oracle_samples_list]
     return (np.mean(kl_vals) - target_kl_oracle) ** 2
 
+def bb1_local_oracle_objective(params):
+    theta, delta = params
+    if theta <= 0 or delta < 1:
+        return np.inf
+    pdf_bb1 = lambda u: bb1_copula_pdf_from_PITs(u, theta, delta)
+    kl_vals = [
+        estimate_localized_kl(u, pdf_sGumbel, pdf_bb1, mask)
+        for u, mask in zip(oracle_samples_list, oracle_masks_list)
+    ]
+    return (np.mean(kl_vals) - target_local_kl_oracle) ** 2
+
+# Run optimization
 res_oracle = minimize(
     bb1_oracle_objective,
     x0=[2.0, 2.5],
@@ -44,11 +65,31 @@ res_oracle = minimize(
     method="L-BFGS-B"
 )
 
+res_local_oracle = minimize(
+    bb1_local_oracle_objective,
+    x0=[2.0, 2.5],
+    bounds=[(0.01, 30), (1.0, 30)],
+    method="L-BFGS-B"
+)
+
+# === Final reporting ===
+
 theta_bb1_oracle, delta_bb1_oracle = res_oracle.x
 pdf_bb1_opt = lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1_oracle, delta_bb1_oracle)
+
+theta_bb1_local_oracle, delta_bb1_local_oracle = res_local_oracle.x
+pdf_bb1_opt_local = lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1_local_oracle, delta_bb1_local_oracle)
+
+kl_final_local = estimate_localized_kl(
+    np.vstack(oracle_samples_list), pdf_sGumbel, pdf_bb1_opt_local, np.concatenate(oracle_masks_list)
+)
+
 print(f"Tuned BB1 (oracle PITs): theta = {theta_bb1_oracle:.4f}, delta = {delta_bb1_oracle:.4f}")
-print(f"Target KL(clayton||g) oracle: {target_kl_oracle:.6f}")
-print(f"Optimized KL(clayton||bb1): {estimate_kl_divergence_copulas(np.vstack(oracle_samples_list), pdf_clayton, pdf_bb1_opt)}")
+print(f"Target KL(sGumbel||g) oracle: {target_kl_oracle:.6f}")
+print(f"Optimized KL(sGumbel||bb1): {estimate_kl_divergence_copulas(np.vstack(oracle_samples_list), pdf_sGumbel, pdf_bb1_opt):.6f}")
+print(f"Tuned localized BB1 (oracle PITs): theta = {theta_bb1_local_oracle:.4f}, delta = {delta_bb1_local_oracle:.4f}")
+print(f"Target localized KL(sGumbel||g) oracle: {target_local_kl_oracle:.6f}")
+print(f"Optimized localized KL(sGumbel||bb1): {kl_final_local:.6f}")
 
 def plot_histogram_kde(data_f, data_g, data_p, title, pit_type):
     """
@@ -161,35 +202,8 @@ def plot_all_score_diffs_side_by_side(score_dict_oracle, score_dict_ecdf, score_
     plt.tight_layout()
     plt.show()
 
-def region_weight_function(u, q_threshold, df):
-    """
-    Computes binary weight mask in PIT space based on Y1 + Y2 ≤ q.
 
-    Inputs:
-        u : (n, 2) array of PITs
-        q_threshold : float, quantile threshold (e.g. 5% sum cutoff)
-        df : degrees of freedom of Student-t marginals
-
-    Returns:
-        (n,) binary array: 1 if y1 + y2 ≤ q_threshold, else 0
-    """
-
-    u_seq = np.linspace(0.005, 0.995, n)
-    U1, U2 = np.meshgrid(u_seq, u_seq)
-
-    y1 = student_t.ppf(u[:, 0], df)
-    y2 = student_t.ppf(u[:, 1], df)
-
-    q_true = np.quantile(y1 + y2, q_threshold)
-
-    Y1 = student_t.ppf(U1, df)
-    Y2 = student_t.ppf(U2, df)
-
-    return ((Y1 + Y2) <= q_true).astype(int)
-
-
-
-def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_oracle, delta_oracle, theta_clayton):
+def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_oracle, delta_oracle, theta_sGumbel):
     """
         Helper function for simulating one repetition in multi-threading
 
@@ -203,54 +217,54 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_oracle, delta_oracle, the
     samples_p = multivariate_t.rvs(loc=[0, 0], shape=[[1, 0], [0, 1]], df=df, size=n)
     estim_u_p = ecdf_transform(samples_p)
     sim_u_p = student_t.cdf(samples_p, df=df)
-    w_p = region_weight_function(sim_u_p, 0.05, df)
+    w_p = region_weight_function(n, sim_u_p, 0.05, df)
 
-    # Define DGP2 (clayton)
-    sim_u_clayton = sim_clayton_PITs(n, theta_clayton)
-    samples_clayton = np.column_stack([
-        student_t.ppf(sim_u_clayton[:, 0], df),
-        student_t.ppf(sim_u_clayton[:, 1], df)
+    # Define DGP2 (survival Gumbel)
+    sim_u_sGumbel = sim_sGumbel_PITs(n, theta_sGumbel)
+    samples_sGumbel = np.column_stack([
+        student_t.ppf(sim_u_sGumbel[:, 0], df),
+        student_t.ppf(sim_u_sGumbel[:, 1], df)
     ])
-    estim_u_clayton = ecdf_transform(samples_clayton)
-    w_clayton = region_weight_function(sim_u_clayton, 0.05, df)
+    estim_u_sGumbel = ecdf_transform(samples_sGumbel)
+    w_sGumbel = region_weight_function(n, sim_u_sGumbel, 0.05, df)
 
     return {
         "LogS_f_oracle": LogS_student_t_copula(sim_u_p, f_rho, df), #based on DGP1 (indep. student-t)
         "LogS_g_oracle": LogS_student_t_copula(sim_u_p, g_rho, df), #based on DGP1 (indep. student-t)
-        "LogS_g_for_KL_matching_oracle": LogS_student_t_copula(sim_u_clayton, g_rho, df), #based on DGP2 (clayton)
+        "LogS_g_for_KL_matching_oracle": LogS_student_t_copula(sim_u_sGumbel, g_rho, df), #based on DGP2 (sGumbel)
         "LogS_p_oracle": LogS_student_t_copula(sim_u_p, p_rho, df), #based on DGP1 (indep. student-t)
-        "LogS_bb1_oracle": LogS_bb1(sim_u_clayton, theta_oracle, delta_oracle), #based on DGP2 (clayton)
-        "LogS_clayton_oracle": LogS_clayton(sim_u_clayton, theta_clayton), #based on DGP2 (clayton)
+        "LogS_bb1_oracle": LogS_bb1(sim_u_sGumbel, theta_oracle, delta_oracle), #based on DGP2 (sGumbel)
+        "LogS_sGumbel_oracle": LogS_sGumbel(sim_u_sGumbel, theta_sGumbel), #based on DGP2 (sGumbel)
         "CS_f_oracle": CS_student_t_copula(sim_u_p, f_rho, df, w_p),
         "CS_g_oracle": CS_student_t_copula(sim_u_p, g_rho, df, w_p),
-        "CS_g_for_KL_matching_oracle": CS_student_t_copula(sim_u_clayton, g_rho, df, w_clayton),
+        "CS_g_for_KL_matching_oracle": CS_student_t_copula(sim_u_sGumbel, g_rho, df, w_sGumbel),
         "CS_p_oracle": CS_student_t_copula(sim_u_p, p_rho, df, w_p),
-        "CS_bb1_oracle": CS_bb1(sim_u_clayton, theta_oracle, delta_oracle, w_clayton),
-        "CS_clayton_oracle": CS_clayton(sim_u_clayton, theta_clayton, w_clayton),
+        "CS_bb1_oracle": CS_bb1(sim_u_sGumbel, theta_oracle, delta_oracle, w_sGumbel),
+        "CS_sGumbel_oracle": CS_sGumbel(sim_u_sGumbel, theta_sGumbel, w_sGumbel),
         "CLS_f_oracle": CLS_student_t_copula(sim_u_p, f_rho, df, w_p),
         "CLS_g_oracle": CLS_student_t_copula(sim_u_p, g_rho, df, w_p),
-        "CLS_g_for_KL_matching_oracle": CLS_student_t_copula(sim_u_clayton, g_rho, df, w_clayton),
+        "CLS_g_for_KL_matching_oracle": CLS_student_t_copula(sim_u_sGumbel, g_rho, df, w_sGumbel),
         "CLS_p_oracle": CLS_student_t_copula(sim_u_p, p_rho, df, w_p),
-        "CLS_bb1_oracle": CLS_bb1(sim_u_clayton, theta_oracle, delta_oracle, w_clayton),
-        "CLS_clayton_oracle": CLS_clayton(sim_u_clayton, theta_clayton, w_clayton),
+        "CLS_bb1_oracle": CLS_bb1(sim_u_sGumbel, theta_oracle, delta_oracle, w_sGumbel),
+        "CLS_sGumbel_oracle": CLS_sGumbel(sim_u_sGumbel, theta_sGumbel, w_sGumbel),
         "LogS_f_ecdf": LogS_student_t_copula(estim_u_p, f_rho, df),
         "LogS_g_ecdf": LogS_student_t_copula(estim_u_p, g_rho, df),
-        "LogS_g_for_KL_matching_ecdf": LogS_student_t_copula(estim_u_clayton, g_rho, df),
+        "LogS_g_for_KL_matching_ecdf": LogS_student_t_copula(estim_u_sGumbel, g_rho, df),
         "LogS_p_ecdf": LogS_student_t_copula(estim_u_p, p_rho, df),
-        "LogS_bb1_ecdf": LogS_bb1(estim_u_clayton, theta_oracle, delta_oracle),
-        "LogS_clayton_ecdf": LogS_clayton(estim_u_clayton, theta_oracle),
+        "LogS_bb1_ecdf": LogS_bb1(estim_u_sGumbel, theta_oracle, delta_oracle),
+        "LogS_sGumbel_ecdf": LogS_sGumbel(estim_u_sGumbel, theta_oracle),
         "CS_f_ecdf": CS_student_t_copula(estim_u_p, f_rho, df, w_p),
         "CS_g_ecdf": CS_student_t_copula(estim_u_p, g_rho, df, w_p),
-        "CS_g_for_KL_matching_ecdf": CS_student_t_copula(estim_u_clayton, g_rho, df, w_clayton),
+        "CS_g_for_KL_matching_ecdf": CS_student_t_copula(estim_u_sGumbel, g_rho, df, w_sGumbel),
         "CS_p_ecdf": CS_student_t_copula(estim_u_p, p_rho, df, w_p),
-        "CS_bb1_ecdf": CS_bb1(estim_u_clayton, theta_oracle, delta_oracle, w_clayton),
-        "CS_clayton_ecdf": CS_clayton(estim_u_clayton, theta_oracle, w_clayton),
+        "CS_bb1_ecdf": CS_bb1(estim_u_sGumbel, theta_oracle, delta_oracle, w_sGumbel),
+        "CS_sGumbel_ecdf": CS_sGumbel(estim_u_sGumbel, theta_oracle, w_sGumbel),
         "CLS_f_ecdf": CLS_student_t_copula(estim_u_p, f_rho, df, w_p),
         "CLS_g_ecdf": CLS_student_t_copula(estim_u_p, g_rho, df, w_p),
-        "CLS_g_for_KL_matching_ecdf": CLS_student_t_copula(estim_u_clayton, g_rho, df, w_clayton),
+        "CLS_g_for_KL_matching_ecdf": CLS_student_t_copula(estim_u_sGumbel, g_rho, df, w_sGumbel),
         "CLS_p_ecdf": CLS_student_t_copula(estim_u_p, p_rho, df, w_p),
-        "CLS_bb1_ecdf": CLS_bb1(estim_u_clayton, theta_oracle, delta_oracle, w_clayton),
-        "CLS_clayton_ecdf": CLS_clayton(estim_u_clayton, theta_oracle, w_clayton),
+        "CLS_bb1_ecdf": CLS_bb1(estim_u_sGumbel, theta_oracle, delta_oracle, w_sGumbel),
+        "CLS_sGumbel_ecdf": CLS_sGumbel(estim_u_sGumbel, theta_oracle, w_sGumbel),
     }
 
 if __name__ == '__main__':
@@ -259,7 +273,7 @@ if __name__ == '__main__':
 
     with ProcessPoolExecutor() as executor:
         futures = [executor.submit(simulate_one_rep, n, df, f_rho, g_rho, p_rho, theta_bb1_oracle,
-                                   delta_bb1_oracle, theta_clayton) for _ in range(reps)]
+                                   delta_bb1_oracle, theta_sGumbel) for _ in range(reps)]
 
         for future in tqdm(as_completed(futures), total=reps, desc="Running simulations"):
             results.append(future.result())
@@ -269,42 +283,42 @@ if __name__ == '__main__':
     vecLogS_student_t_copula_p_oracle = np.array([res["LogS_p_oracle"] for res in results]) #DGP1
     vecLogS_g_for_KL_matching_oracle = np.array([res["LogS_g_for_KL_matching_oracle"] for res in results]) #DGP2
     vecLogS_bb1_oracle = np.array([res["LogS_bb1_oracle"] for res in results]) #DGP2
-    vecLogS_clayton_oracle = np.array([res["LogS_clayton_oracle"] for res in results]) #DGP2
+    vecLogS_sGumbel_oracle = np.array([res["LogS_sGumbel_oracle"] for res in results]) #DGP2
 
     vecCS_student_t_copula_f_oracle = np.array([res["CS_f_oracle"] for res in results])
     vecCS_student_t_copula_g_oracle = np.array([res["CS_g_oracle"] for res in results])
     vecCS_student_t_copula_p_oracle = np.array([res["CS_p_oracle"] for res in results])
     vecCS_g_for_KL_matching_oracle = np.array([res["CS_g_for_KL_matching_oracle"] for res in results])
     vecCS_bb1_oracle = np.array([res["CS_bb1_oracle"] for res in results])
-    vecCS_clayton_oracle = np.array([res["CS_clayton_oracle"] for res in results])
+    vecCS_sGumbel_oracle = np.array([res["CS_sGumbel_oracle"] for res in results])
 
     vecCLS_student_t_copula_f_oracle = np.array([res["CLS_f_oracle"] for res in results])
     vecCLS_student_t_copula_g_oracle = np.array([res["CLS_g_oracle"] for res in results])
     vecCLS_student_t_copula_p_oracle = np.array([res["CLS_p_oracle"] for res in results])
     vecCLS_g_for_KL_matching_oracle = np.array([res["CLS_g_for_KL_matching_oracle"] for res in results])
     vecCLS_bb1_oracle = np.array([res["CLS_bb1_oracle"] for res in results])
-    vecCLS_clayton_oracle = np.array([res["CLS_clayton_oracle"] for res in results])
+    vecCLS_sGumbel_oracle = np.array([res["CLS_sGumbel_oracle"] for res in results])
 
     vecLogS_student_t_copula_f_ecdf = np.array([res["LogS_f_ecdf"] for res in results])
     vecLogS_student_t_copula_g_ecdf = np.array([res["LogS_g_ecdf"] for res in results])
     vecLogS_student_t_copula_p_ecdf = np.array([res["LogS_p_ecdf"] for res in results])
     vecLogS_g_for_KL_matching_ecdf = np.array([res["LogS_g_for_KL_matching_ecdf"] for res in results])
     vecLogS_bb1_ecdf = np.array([res["LogS_bb1_ecdf"] for res in results])
-    vecLogS_clayton_ecdf = np.array([res["LogS_clayton_ecdf"] for res in results])
+    vecLogS_sGumbel_ecdf = np.array([res["LogS_sGumbel_ecdf"] for res in results])
 
     vecCS_student_t_copula_f_ecdf = np.array([res["CS_f_ecdf"] for res in results])
     vecCS_student_t_copula_g_ecdf = np.array([res["CS_g_ecdf"] for res in results])
     vecCS_student_t_copula_p_ecdf = np.array([res["CS_p_ecdf"] for res in results])
     vecCS_g_for_KL_matching_ecdf = np.array([res["CS_g_for_KL_matching_ecdf"] for res in results])
     vecCS_bb1_ecdf = np.array([res["CS_bb1_ecdf"] for res in results])
-    vecCS_clayton_ecdf = np.array([res["CS_clayton_ecdf"] for res in results])
+    vecCS_sGumbel_ecdf = np.array([res["CS_sGumbel_ecdf"] for res in results])
 
     vecCLS_student_t_copula_f_ecdf = np.array([res["CLS_f_ecdf"] for res in results])
     vecCLS_student_t_copula_g_ecdf = np.array([res["CLS_g_ecdf"] for res in results])
     vecCLS_student_t_copula_p_ecdf = np.array([res["CLS_p_ecdf"] for res in results])
     vecCLS_g_for_KL_matching_ecdf = np.array([res["CLS_g_for_KL_matching_ecdf"] for res in results])
     vecCLS_bb1_ecdf = np.array([res["CLS_bb1_ecdf"] for res in results])
-    vecCLS_clayton_ecdf = np.array([res["CLS_clayton_ecdf"] for res in results])
+    vecCLS_sGumbel_ecdf = np.array([res["CLS_sGumbel_ecdf"] for res in results])
 
     # vecKL_value_p_bb1_oracle = np.array([res["kl_value_p_bb1_oracle"] for res in results])
     # vecKL_value_p_bb1_ecdf = np.array([res["kl_value_p_bb1_ecdf"] for res in results])

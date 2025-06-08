@@ -4,14 +4,16 @@ To do:
         Wel een multivariate part die te gebruiken is
 
     KLIC matching doen
-        Laat clayton de rotated Gumbel worden
+        Voor de localized moet een localized KLIC gebruikt worden!
+            Deze is misschien niet goed gegaan met de shapes van de masks
 
-    Fix het tweede deel van de simulation die nu kapot lijkt te zijn
+
 
 
 
 To do morgen:
-
+    Code cleanup
+    Fix het tweede deel van de simulation die nu kapot lijkt te zijn
 
 Boundary uncertainty extension:
     Maak de restriction transformation met een andere copula dan de f of g voor size en power test credibility (Mitchell & Wealle example)

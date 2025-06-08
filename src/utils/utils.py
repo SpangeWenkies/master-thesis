@@ -14,29 +14,88 @@ from tqdm import tqdm
 import scipy.optimize as opt
 from concurrent.futures import ProcessPoolExecutor
 
+def region_weight_function_for_kl_match(u, q_threshold, df):
+    """
+    Computes binary weight mask in PIT space based on Y1 + Y2 ≤ q.
 
-def sim_clayton_PITs(n, theta):
+    Inputs:
+        n : sample size
+        u : (n, 2) array of PITs
+        q_threshold : float, quantile threshold (e.g. 5% sum cutoff)
+        df : degrees of freedom of Student-t marginals
+
+    Returns:
+        (n,) binary array: 1 if y1 + y2 ≤ q_threshold, else 0
+    """
+
+    y1 = student_t.ppf(u[:, 0], df)
+    y2 = student_t.ppf(u[:, 1], df)
+
+    q_true = np.quantile(y1 + y2, q_threshold)
+
+    return ((y1 + y2) <= q_true).astype(int)
+
+def region_weight_function(n, u, q_threshold, df):
+    """
+    Computes binary weight mask in PIT space based on Y1 + Y2 ≤ q.
+
+    Inputs:
+        n : sample size
+        u : (n, 2) array of PITs
+        q_threshold : float, quantile threshold (e.g. 5% sum cutoff)
+        df : degrees of freedom of Student-t marginals
+
+    Returns:
+        (n,n) binary array: 1 if y1 + y2 ≤ q_threshold, else 0
+    """
+
+    u_seq = np.linspace(0.005, 0.995, n)
+    U1, U2 = np.meshgrid(u_seq, u_seq)
+
+    y1 = student_t.ppf(u[:, 0], df)
+    y2 = student_t.ppf(u[:, 1], df)
+
+    q_true = np.quantile(y1 + y2, q_threshold)
+
+    Y1 = student_t.ppf(U1, df)
+    Y2 = student_t.ppf(U2, df)
+
+    return ((Y1 + Y2) <= q_true).astype(int)
+
+
+def sim_sGumbel_PITs(n, theta):
+    """
+            Simulate survival Gumbel copula PITs
+
+            Inputs:
+                n :       sample size
+                theta :   dependence parameter (>=1)
+                            theta = 1 give the independence copula
+            Outputs:
+                survival Gumbel copula PITs
+        """
     numpy2ri.activate()
     ro.r.assign('theta', theta)
     ro.r.assign('n', n)
     ro.r('''
         library(VineCopula)
         set.seed(12085278)
-        C <- BiCop(3, par = theta)
+        C <- BiCop(14, par = theta)
         u <- BiCopSim(n, C)
-        ''')           # family = 3 → Clayton
+        ''')           # family = 14 → survival Gumbel
     return np.array(ro.r('u'))
 
-def clayton_copula_pdf_from_PITs(u, theta):
+def sGumbel_copula_pdf_from_PITs(u, theta):
     """
-        Calculate clayton copula pdf from given PITs and theta parameter
+        Calculate survival Gumbel copula pdf from given PITs and theta parameter
 
         Inputs:
             u :     np.ndarray
                         An (n, 2) array of PITs, each in (0,1)
-            theta :   dependence parameter (>0)
+            theta :   dependence parameter (>=1)
+                        theta = 1 give the independence copula
         Outputs:
-            clayton copula pdf
+            survival Gumbel copula pdf
     """
 
     numpy2ri.activate()
@@ -51,7 +110,7 @@ def clayton_copula_pdf_from_PITs(u, theta):
         set.seed(12085278)
 
         # Define BB1 copula with initial parameters
-        cop_model <- BiCop(family = 3, par = theta)
+        cop_model <- BiCop(family = 14, par = theta)
 
         # Evaluate PDF over a grid
         cop_pdf <- BiCopPDF(u_data[,1], u_data[,2], cop_model)
@@ -61,14 +120,15 @@ def clayton_copula_pdf_from_PITs(u, theta):
 
     return true_pdf
 
-def LogS_clayton(u, theta):
+def LogS_sGumbel(u, theta):
     """
         Purpose:
-        Regular Logarithmic scoring rule on clayton copula pdf
+        Regular Logarithmic scoring rule on survival Gumbel copula pdf
     Inputs:
             u :     np.ndarray
                         An (n, 2) array of PITs, each in (0,1)
-            theta :   dependence parameter (>0)
+            theta :   dependence parameter (>=1)
+                        theta = 1 give the independence copula
 
     Return value:
         sum(np.log(mF))     sum of log of all mF matrix points
@@ -77,20 +137,21 @@ def LogS_clayton(u, theta):
         iT x iRep matrix with calculated log scores
     """
 
-    mF = clayton_copula_pdf_from_PITs(u, theta)
+    mF = sGumbel_copula_pdf_from_PITs(u, theta)
     mF[mF == 0] = 1e-100  # avoid numerical zeros
     return sum(np.log(mF))
 
 ###########################################################
 
-def CS_clayton(u, theta, w):
+def CS_sGumbel(u, theta, w):
     """
     Purpose:
-        Censored Logarithmic scoring rule on clayton copula pdf
+        Censored Logarithmic scoring rule on survival Gumbel copula pdf
     Inputs:
             u :     np.ndarray
                         An (n, 2) array of PITs, each in (0,1)
-            theta :   dependence parameter (>0)
+            theta :   dependence parameter (>=1)
+                        theta = 1 give the independence copula
             w :     (n,) array of weights (binary or smooth)
 
     Return value:
@@ -100,7 +161,7 @@ def CS_clayton(u, theta, w):
         scalar of calculated censored log scores
     """
 
-    mF = clayton_copula_pdf_from_PITs(u, theta)
+    mF = sGumbel_copula_pdf_from_PITs(u, theta)
     mF[mF == 0] = 1e-100  # avoid numerical zeros
     log_mF = np.log(mF)
 
@@ -112,14 +173,15 @@ def CS_clayton(u, theta, w):
 
 ###########################################################
 
-def CLS_clayton(u, theta, w):
+def CLS_sGumbel(u, theta, w):
     """
     Purpose:
-        Conditional Logarithmic scoring rule on clayton copula pdf
+        Conditional Logarithmic scoring rule on survival Gumbel copula pdf
     Inputs:
             u :     np.ndarray
                         An (n, 2) array of PITs, each in (0,1)
-            theta :   dependence parameter (>0)
+            theta :   dependence parameter (>=1)
+                        theta = 1 give the independence copula
             w :     (n,) array of weights (binary or smooth)
 
     Return value:
@@ -129,7 +191,7 @@ def CLS_clayton(u, theta, w):
         scalar of calculated conditional log scores
     """
 
-    mF = clayton_copula_pdf_from_PITs(u, theta, delta)
+    mF = sGumbel_copula_pdf_from_PITs(u, theta)
     mF[mF == 0] = 1e-100
     # Estimate mass outside region: bar(Fw) = P(y not in A)
     F_total = np.sum(mF)
@@ -237,6 +299,30 @@ def estimate_kl_divergence_copulas(u_samples, pdf_p, pdf_q):
     q_vals[q_vals == 0] = 1e-100
 
     return np.mean(np.log(p_vals) - np.log(q_vals))
+
+
+def estimate_localized_kl(u_samples, pdf_p, pdf_f, region_mask):
+    """
+    Estimates localized KL divergence from p to f over a censored region A.
+
+    Inputs:
+        u_samples : array (n, d) from true copula p
+        pdf_p, pdf_f : functions returning densities from p and f
+        region_mask : boolean mask over u_samples for region A (i.e., indicator weight function)
+
+    Returns:
+        localized KL divergence
+    """
+    u_in_A = u_samples[region_mask.astype(bool)]
+    p_vals = pdf_p(u_in_A)
+    f_vals = pdf_f(u_in_A)
+
+    # avoid log(0)
+    f_vals[f_vals == 0] = 1e-100
+    p_vals[p_vals == 0] = 1e-100
+
+    kl_vals = np.log(p_vals / f_vals)
+    return np.mean(kl_vals)
 
 ###########################################################
 
