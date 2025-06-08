@@ -6,7 +6,7 @@ To do:
     KLIC matching doen
         Laat clayton de rotated Gumbel worden
 
-    Fix het tweede deel van de simulation die nu kapot lijkt te zijn.
+    Fix het tweede deel van de simulation die nu kapot lijkt te zijn
 
 
 
