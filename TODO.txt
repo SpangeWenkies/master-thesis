@@ -1,21 +1,13 @@
 To do:
-    #DONE# het maken van de candidates en log score
-    #DONE# true DGP copula maakt oracle u'tjes
 
     Code ramon (2025 paper) gebruikt geen copula's
         Wel een multivariate part die te gebruiken is
 
-    Kijk in paper diks et al 2010 hoe de true dgp defined is
+    KLIC matching doen
+        Laat clayton de rotated Gumbel worden
 
-    Uitvinden waar estimation van u'tjes te doen
-        Dit is waarschijnlijk om van observed marginals x en y naar u'tjes voor copula te gegaan
-            u_hat's komen door van x en y de ECDF toe te passen i.e. u_hat=ECDF(y)
-                Deze y zou dan dezelfde moeten zijn als die bij oracle u-tjes horen
-        Wat is de transformation hier? np.quantile() of "rank .../(n+1)""
-            Stel np.quatile(), moet ik dan eerst quantile function met 10e+6 reps maken om extra uncertainty uit te sluiten?
-        Implement deze estimated u'tjes
-        Laat de score functions de copula pdf met deze u'tjes ingevuld bekijken
-        Plot deze scores van de candidates over de oracle case histogram en KDE lines
+    Fix het tweede deel van de simulation die nu kapot lijkt te zijn.
+
 
 
 To do morgen:

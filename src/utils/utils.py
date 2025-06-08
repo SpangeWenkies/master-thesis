@@ -15,6 +15,134 @@ import scipy.optimize as opt
 from concurrent.futures import ProcessPoolExecutor
 
 
+def sim_clayton_PITs(n, theta):
+    numpy2ri.activate()
+    ro.r.assign('theta', theta)
+    ro.r.assign('n', n)
+    ro.r('''
+        library(VineCopula)
+        set.seed(12085278)
+        C <- BiCop(3, par = theta)
+        u <- BiCopSim(n, C)
+        ''')           # family = 3 → Clayton
+    return np.array(ro.r('u'))
+
+def clayton_copula_pdf_from_PITs(u, theta):
+    """
+        Calculate clayton copula pdf from given PITs and theta parameter
+
+        Inputs:
+            u :     np.ndarray
+                        An (n, 2) array of PITs, each in (0,1)
+            theta :   dependence parameter (>0)
+        Outputs:
+            clayton copula pdf
+    """
+
+    numpy2ri.activate()
+
+    # Inject the u1, u2, theta, delta variables into R
+    ro.globalenv['u_data'] = u
+    ro.globalenv['theta'] = theta
+
+    # R code
+    ro.r('''
+        library(VineCopula)
+        set.seed(12085278)
+
+        # Define BB1 copula with initial parameters
+        cop_model <- BiCop(family = 3, par = theta)
+
+        # Evaluate PDF over a grid
+        cop_pdf <- BiCopPDF(u_data[,1], u_data[,2], cop_model)
+        ''')
+
+    true_pdf = np.array(ro.r('cop_pdf'))
+
+    return true_pdf
+
+def LogS_clayton(u, theta):
+    """
+        Purpose:
+        Regular Logarithmic scoring rule on clayton copula pdf
+    Inputs:
+            u :     np.ndarray
+                        An (n, 2) array of PITs, each in (0,1)
+            theta :   dependence parameter (>0)
+
+    Return value:
+        sum(np.log(mF))     sum of log of all mF matrix points
+
+    Output:
+        iT x iRep matrix with calculated log scores
+    """
+
+    mF = clayton_copula_pdf_from_PITs(u, theta)
+    mF[mF == 0] = 1e-100  # avoid numerical zeros
+    return sum(np.log(mF))
+
+###########################################################
+
+def CS_clayton(u, theta, w):
+    """
+    Purpose:
+        Censored Logarithmic scoring rule on clayton copula pdf
+    Inputs:
+            u :     np.ndarray
+                        An (n, 2) array of PITs, each in (0,1)
+            theta :   dependence parameter (>0)
+            w :     (n,) array of weights (binary or smooth)
+
+    Return value:
+        w * log_mF + (1 - w) * log_Fw_bar  weighted log of mF * w plus inverse weighted log of Fw_bar
+
+    Output:
+        scalar of calculated censored log scores
+    """
+
+    mF = clayton_copula_pdf_from_PITs(u, theta)
+    mF[mF == 0] = 1e-100  # avoid numerical zeros
+    log_mF = np.log(mF)
+
+    # Censored score uses region average as a constant reference
+    Fw_bar = np.sum(mF * w) / np.sum(w)
+    Fw_bar = max(Fw_bar, 1e-100)
+    log_Fw_bar = np.log(Fw_bar)
+    return np.sum(w * log_mF + (1 - w) * log_Fw_bar)
+
+###########################################################
+
+def CLS_clayton(u, theta, w):
+    """
+    Purpose:
+        Conditional Logarithmic scoring rule on clayton copula pdf
+    Inputs:
+            u :     np.ndarray
+                        An (n, 2) array of PITs, each in (0,1)
+            theta :   dependence parameter (>0)
+            w :     (n,) array of weights (binary or smooth)
+
+    Return value:
+        ...
+
+    Output:
+        scalar of calculated conditional log scores
+    """
+
+    mF = clayton_copula_pdf_from_PITs(u, theta, delta)
+    mF[mF == 0] = 1e-100
+    # Estimate mass outside region: bar(Fw) = P(y not in A)
+    F_total = np.sum(mF)
+    F_outside = np.sum(mF * (1 - w))
+    F_outside = min(F_outside, F_total - 1e-100)  # avoid division by 0 or log(0)
+
+    # log(1 - mass_inside) = log(mass_outside / total)
+    log_1_minus_Fw = np.log(F_outside / F_total + 1e-100)
+
+    return np.sum(w * (np.log(mF) - log_1_minus_Fw))
+
+###########################################################
+
 def WhiteNoiseSim(iT, vDistrParams, sDistrName):
     """
     Purpose:
@@ -88,6 +216,30 @@ def GARCHSim(iT, vGARCHParams, iP, vDistrParams, sDistrName):
 
 ###########################################################
 
+def estimate_kl_divergence_copulas(u_samples, pdf_p, pdf_q):
+    """
+    Estimate KL divergence D_KL(p || q) using:
+        D_KL(p || q) ≈ mean(log p(u) - log q(u))
+
+    Inputs:
+        u_samples : (n, 2) array of PITs sampled from p
+        pdf_p     : function u -> p(u), the true density
+        pdf_q     : function u -> q(u), the candidate density
+
+    Returns:
+        float – estimated KL divergence
+    """
+    p_vals = pdf_p(u_samples)
+    q_vals = pdf_q(u_samples)
+
+    # Avoid log(0)
+    p_vals[p_vals == 0] = 1e-100
+    q_vals[q_vals == 0] = 1e-100
+
+    return np.mean(np.log(p_vals) - np.log(q_vals))
+
+###########################################################
+
 def ecdf_transform(Y):
     """
     Purpose: Apply ECDF transform to each column of Y to obtain PITs
@@ -138,17 +290,17 @@ def student_t_copula_pdf_from_PITs(u, rho, df):
 
 ###########################################################
 
-def bb7_copula_pdf_from_PITs(u, theta, delta):
+def bb1_copula_pdf_from_PITs(u, theta, delta):
     """
-        Calculate bb7 copula pdf from given PITs and bb7 parameters
+        Calculate bb1 copula pdf from given PITs and bb1 parameters
 
         Inputs:
             u :     np.ndarray
                         An (n, 2) array of PITs, each in (0,1)
-            theta :   dependence parameter (>1)
-            delta :   tail asymmetry parameter (>1)
+            theta :   dependence parameter (>0)
+            delta :   tail asymmetry parameter (>=1)
         Outputs:
-            student-t copula pdf
+            bb1 copula pdf
     """
 
     numpy2ri.activate()
@@ -163,8 +315,8 @@ def bb7_copula_pdf_from_PITs(u, theta, delta):
         library(VineCopula)
         set.seed(12085278)
 
-        # Define BB7 copula with initial parameters
-        cop_model <- BiCop(family = 17, par = theta, par2 = delta)
+        # Define BB1 copula with initial parameters
+        cop_model <- BiCop(family = 7, par = theta, par2 = delta)
 
         # Evaluate PDF over a grid
         cop_pdf <- BiCopPDF(u_data[,1], u_data[,2], cop_model)
@@ -176,15 +328,15 @@ def bb7_copula_pdf_from_PITs(u, theta, delta):
 
 ###########################################################
 
-def LogS_bb7(u, theta, delta):
+def LogS_bb1(u, theta, delta):
     """
         Purpose:
-        Regular Logarithmic scoring rule on bb7 copula pdf
+        Regular Logarithmic scoring rule on bb1 copula pdf
     Inputs:
             u :     np.ndarray
                         An (n, 2) array of PITs, each in (0,1)
-            theta :   dependence parameter (>1)
-            delta :    tail assymetry parameter (>1)
+            theta :   dependence parameter (>0)
+            delta :    tail asymmetry parameter (>=1)
 
     Return value:
         sum(np.log(mF))     sum of log of all mF matrix points
@@ -193,21 +345,21 @@ def LogS_bb7(u, theta, delta):
         iT x iRep matrix with calculated log scores
     """
 
-    mF = bb7_copula_pdf_from_PITs(u, theta, delta)
+    mF = bb1_copula_pdf_from_PITs(u, theta, delta)
     mF[mF == 0] = 1e-100  # avoid numerical zeros
     return sum(np.log(mF))
 
 ###########################################################
 
-def CS_bb7(u, theta, delta, w):
+def CS_bb1(u, theta, delta, w):
     """
     Purpose:
-        Censored Logarithmic scoring rule on student t copula pdf
+        Censored Logarithmic scoring rule on bb1 copula pdf
     Inputs:
             u :     np.ndarray
                         An (n, 2) array of PITs, each in (0,1)
-            theta :   Correlation parameter [-1,1]
-            delta :    degrees of freedom t distribution
+            theta :   dependence parameter (>0)
+            delta :    tail asymmetry parameter (>=1)
             w :     (n,) array of weights (binary or smooth)
 
     Return value:
@@ -217,7 +369,7 @@ def CS_bb7(u, theta, delta, w):
         scalar of calculated censored log scores
     """
 
-    mF = bb7_copula_pdf_from_PITs(u, theta, delta)
+    mF = bb1_copula_pdf_from_PITs(u, theta, delta)
     mF[mF == 0] = 1e-100  # avoid numerical zeros
     log_mF = np.log(mF)
 
@@ -229,15 +381,15 @@ def CS_bb7(u, theta, delta, w):
 
 ###########################################################
 
-def CLS_bb7(u, theta, delta, w):
+def CLS_bb1(u, theta, delta, w):
     """
     Purpose:
-        Conditional Logarithmic scoring rule on student t copula pdf
+        Conditional Logarithmic scoring rule on bb1 copula pdf
     Inputs:
             u :     np.ndarray
                         An (n, 2) array of PITs, each in (0,1)
-            theta :   Correlation parameter [-1,1]
-            delta :    degrees of freedom t distribution
+            theta :   dependence parameter (>0)
+            delta :    tail asymmetry parameter (>=1)
             w :     (n,) array of weights (binary or smooth)
 
     Return value:
@@ -247,7 +399,7 @@ def CLS_bb7(u, theta, delta, w):
         scalar of calculated conditional log scores
     """
 
-    mF = bb7_copula_pdf_from_PITs(u, theta, delta)
+    mF = bb1_copula_pdf_from_PITs(u, theta, delta)
     mF[mF == 0] = 1e-100
     # Estimate mass outside region: bar(Fw) = P(y not in A)
     F_total = np.sum(mF)
@@ -458,7 +610,7 @@ def R_bb7(u1, u2, theta, delta, resid1, resid2, verbose=True):
         Inputs:
             u1, u2:             input series of uniforms from PIT transformation of marginal residuals
             theta:              bb7 dependence parameter (>1)
-            delta:              bb7 tail asymmetry parameter (>1)
+            delta:              bb7 tail asymmetry parameter (>0)
             verbose (boolean):  Plot or not
             resid1, resid2:     residual series
 
@@ -485,7 +637,7 @@ def R_bb7(u1, u2, theta, delta, resid1, resid2, verbose=True):
     u_data <- cbind(u1, u2)
 
     # Define BB7 copula with initial parameters
-    cop_model <- BiCop(family = 17, par = theta, par2 = delta)
+    cop_model <- BiCop(family = 9, par = theta, par2 = delta)
 
     # Optional: evaluate copula CDF on data
     cop_cdf_values <- BiCopCDF(u_data[,1], u_data[,2], cop_model)
@@ -604,7 +756,7 @@ def simulate_joint_t_marginals(n, df, theta, delta, verbose=True):
     set.seed(123)
 
     # Simulate PITs
-    cop_model <- BiCop(family = 17, par = theta, par2 = delta)
+    cop_model <- BiCop(family = 9, par = theta, par2 = delta)
     u_sim <- BiCopSim(N = n, obj = cop_model)
     u1 <- u_sim[, 1]
     u2 <- u_sim[, 2]

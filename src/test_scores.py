@@ -1,15 +1,54 @@
+from matplotlib.mlab import detrend_linear
+
+from src.utils.utils import sim_clayton_PITs
 from utils.utils import *
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from tqdm import tqdm
+from scipy.optimize import minimize
 
 n = 100 # a year of daily observations where the market is open
 df = 5
 f_rho = -0.3
 g_rho = 0.3
 p_rho = 0
-theta = 2
-delta = 3
+theta_clayton = 2
+# delta = 3
 reps = 10000
+
+# Simulate oracle and ECDF PITs using full process
+oracle_samples_list = []
+
+for _ in range(reps):
+    sim_u_clayton = sim_clayton_PITs(n, theta_clayton)
+    oracle_samples_list.append(sim_u_clayton)
+
+pdf_clayton = lambda u: clayton_copula_pdf_from_PITs(u, theta_clayton)
+pdf_g = lambda u: student_t_copula_pdf_from_PITs(u, rho=g_rho, df=df)
+
+# === Oracle KL matching ===
+kl_oracle_clayton_g_list = [estimate_kl_divergence_copulas(u, pdf_clayton, pdf_g) for u in oracle_samples_list]
+target_kl_oracle = np.mean(kl_oracle_clayton_g_list)
+
+def bb1_oracle_objective(params):
+    theta, delta = params
+    if theta <= 0 or delta < 1:
+        return np.inf
+    pdf_bb1 = lambda u: bb1_copula_pdf_from_PITs(u, theta, delta)
+    kl_vals = [estimate_kl_divergence_copulas(u, pdf_clayton, pdf_bb1) for u in oracle_samples_list]
+    return (np.mean(kl_vals) - target_kl_oracle) ** 2
+
+res_oracle = minimize(
+    bb1_oracle_objective,
+    x0=[2.0, 2.5],
+    bounds=[(0.01, 30), (1, 30)],
+    method="L-BFGS-B"
+)
+
+theta_bb1_oracle, delta_bb1_oracle = res_oracle.x
+pdf_bb1_opt = lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1_oracle, delta_bb1_oracle)
+print(f"Tuned BB1 (oracle PITs): theta = {theta_bb1_oracle:.4f}, delta = {delta_bb1_oracle:.4f}")
+print(f"Target KL(clayton||g) oracle: {target_kl_oracle:.6f}")
+print(f"Optimized KL(clayton||bb1): {estimate_kl_divergence_copulas(np.vstack(oracle_samples_list), pdf_clayton, pdf_bb1_opt)}")
 
 def plot_histogram_kde(data_f, data_g, data_p, title, pit_type):
     """
@@ -47,13 +86,13 @@ def plot_histogram_kde(data_f, data_g, data_p, title, pit_type):
     plt.tight_layout()
     plt.show()
 
-def plot_score_diff_histogram_kde(diff_oracle, diff_ecdf, title):
+def plot_score_diff_histogram_kde(diff_oracle, diff_ecdf, title, title2):
     """
     Plots histogram and KDE lines of score differences using oracle and ECDF-based PITs.
 
     Inputs:
-        diff_oracle : np.ndarray – score differences (f - g) using oracle PITs
-        diff_ecdf   : np.ndarray – score differences (f - g) using ECDF PITs
+        diff_oracle : np.ndarray – score differences (copula 1 - copula 2) using oracle PITs
+        diff_ecdf   : np.ndarray – score differences (copula 1 - copula 2) using ECDF PITs
         title       : str – title of the score type (e.g., "LogS", "CS", "CLS")
 
     Output:
@@ -73,7 +112,7 @@ def plot_score_diff_histogram_kde(diff_oracle, diff_ecdf, title):
     plt.plot(x_grid, kde_oracle(x_grid), label='KDE Oracle', linewidth=2, color='purple')
     plt.plot(x_grid, kde_ecdf(x_grid), label='KDE ECDF', linewidth=2, color='orange')
 
-    plt.title(f"{title} – Score Difference (Model f - g)")
+    plt.title(f"{title} – Score Difference {title2}")
     plt.xlabel("Score Difference")
     plt.ylabel("Density")
     plt.legend()
@@ -148,7 +187,9 @@ def region_weight_function(u, q_threshold, df):
 
     return ((Y1 + Y2) <= q_true).astype(int)
 
-def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta, delta):
+
+
+def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_oracle, delta_oracle, theta_clayton):
     """
         Helper function for simulating one repetition in multi-threading
 
@@ -158,75 +199,118 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta, delta):
         Returns:
             different scores of the candidates and true DGP
         """
-    samples = multivariate_t.rvs(loc=[0, 0], shape=[[1, 0], [0, 1]], df=df, size=n)
-    estim_u = ecdf_transform(samples)
-    sim_u = student_t.cdf(samples, df=df)
-    w = region_weight_function(sim_u, 0.05, df)
+    # Define DGP1 (indep. student-t)
+    samples_p = multivariate_t.rvs(loc=[0, 0], shape=[[1, 0], [0, 1]], df=df, size=n)
+    estim_u_p = ecdf_transform(samples_p)
+    sim_u_p = student_t.cdf(samples_p, df=df)
+    w_p = region_weight_function(sim_u_p, 0.05, df)
+
+    # Define DGP2 (clayton)
+    sim_u_clayton = sim_clayton_PITs(n, theta_clayton)
+    samples_clayton = np.column_stack([
+        student_t.ppf(sim_u_clayton[:, 0], df),
+        student_t.ppf(sim_u_clayton[:, 1], df)
+    ])
+    estim_u_clayton = ecdf_transform(samples_clayton)
+    w_clayton = region_weight_function(sim_u_clayton, 0.05, df)
 
     return {
-        "LogS_f_oracle": LogS_student_t_copula(sim_u, f_rho, df),
-        "LogS_g_oracle": LogS_student_t_copula(sim_u, g_rho, df),
-        "LogS_p_oracle": LogS_student_t_copula(sim_u, p_rho, df),
-        "LogS_bb7_oracle": LogS_bb7(sim_u, theta, delta),
-        "CS_f_oracle": CS_student_t_copula(sim_u, f_rho, df, w),
-        "CS_g_oracle": CS_student_t_copula(sim_u, g_rho, df, w),
-        "CS_p_oracle": CS_student_t_copula(sim_u, p_rho, df, w),
-        "CS_bb7_oracle": CS_bb7(sim_u, theta, delta, w),
-        "CLS_f_oracle": CLS_student_t_copula(sim_u, f_rho, df, w),
-        "CLS_g_oracle": CLS_student_t_copula(sim_u, g_rho, df, w),
-        "CLS_p_oracle": CLS_student_t_copula(sim_u, p_rho, df, w),
-        "CLS_bb7_oracle": CLS_bb7(sim_u, theta, delta, w),
-        "LogS_f_ecdf": LogS_student_t_copula(estim_u, f_rho, df),
-        "LogS_g_ecdf": LogS_student_t_copula(estim_u, g_rho, df),
-        "LogS_p_ecdf": LogS_student_t_copula(estim_u, p_rho, df),
-        "LogS_bb7_ecdf": LogS_bb7(estim_u, theta, delta),
-        "CS_f_ecdf": CS_student_t_copula(estim_u, f_rho, df, w),
-        "CS_g_ecdf": CS_student_t_copula(estim_u, g_rho, df, w),
-        "CS_p_ecdf": CS_student_t_copula(estim_u, p_rho, df, w),
-        "CS_bb7_ecdf": CS_bb7(estim_u, theta, delta, w),
-        "CLS_f_ecdf": CLS_student_t_copula(estim_u, f_rho, df, w),
-        "CLS_g_ecdf": CLS_student_t_copula(estim_u, g_rho, df, w),
-        "CLS_p_ecdf": CLS_student_t_copula(estim_u, p_rho, df, w),
-        "CLS_bb7_ecdf": CLS_bb7(estim_u, theta, delta, w),
+        "LogS_f_oracle": LogS_student_t_copula(sim_u_p, f_rho, df), #based on DGP1 (indep. student-t)
+        "LogS_g_oracle": LogS_student_t_copula(sim_u_p, g_rho, df), #based on DGP1 (indep. student-t)
+        "LogS_g_for_KL_matching_oracle": LogS_student_t_copula(sim_u_clayton, g_rho, df), #based on DGP2 (clayton)
+        "LogS_p_oracle": LogS_student_t_copula(sim_u_p, p_rho, df), #based on DGP1 (indep. student-t)
+        "LogS_bb1_oracle": LogS_bb1(sim_u_clayton, theta_oracle, delta_oracle), #based on DGP2 (clayton)
+        "LogS_clayton_oracle": LogS_clayton(sim_u_clayton, theta_clayton), #based on DGP2 (clayton)
+        "CS_f_oracle": CS_student_t_copula(sim_u_p, f_rho, df, w_p),
+        "CS_g_oracle": CS_student_t_copula(sim_u_p, g_rho, df, w_p),
+        "CS_g_for_KL_matching_oracle": CS_student_t_copula(sim_u_clayton, g_rho, df, w_clayton),
+        "CS_p_oracle": CS_student_t_copula(sim_u_p, p_rho, df, w_p),
+        "CS_bb1_oracle": CS_bb1(sim_u_clayton, theta_oracle, delta_oracle, w_clayton),
+        "CS_clayton_oracle": CS_clayton(sim_u_clayton, theta_clayton, w_clayton),
+        "CLS_f_oracle": CLS_student_t_copula(sim_u_p, f_rho, df, w_p),
+        "CLS_g_oracle": CLS_student_t_copula(sim_u_p, g_rho, df, w_p),
+        "CLS_g_for_KL_matching_oracle": CLS_student_t_copula(sim_u_clayton, g_rho, df, w_clayton),
+        "CLS_p_oracle": CLS_student_t_copula(sim_u_p, p_rho, df, w_p),
+        "CLS_bb1_oracle": CLS_bb1(sim_u_clayton, theta_oracle, delta_oracle, w_clayton),
+        "CLS_clayton_oracle": CLS_clayton(sim_u_clayton, theta_clayton, w_clayton),
+        "LogS_f_ecdf": LogS_student_t_copula(estim_u_p, f_rho, df),
+        "LogS_g_ecdf": LogS_student_t_copula(estim_u_p, g_rho, df),
+        "LogS_g_for_KL_matching_ecdf": LogS_student_t_copula(estim_u_clayton, g_rho, df),
+        "LogS_p_ecdf": LogS_student_t_copula(estim_u_p, p_rho, df),
+        "LogS_bb1_ecdf": LogS_bb1(estim_u_clayton, theta_oracle, delta_oracle),
+        "LogS_clayton_ecdf": LogS_clayton(estim_u_clayton, theta_oracle),
+        "CS_f_ecdf": CS_student_t_copula(estim_u_p, f_rho, df, w_p),
+        "CS_g_ecdf": CS_student_t_copula(estim_u_p, g_rho, df, w_p),
+        "CS_g_for_KL_matching_ecdf": CS_student_t_copula(estim_u_clayton, g_rho, df, w_clayton),
+        "CS_p_ecdf": CS_student_t_copula(estim_u_p, p_rho, df, w_p),
+        "CS_bb1_ecdf": CS_bb1(estim_u_clayton, theta_oracle, delta_oracle, w_clayton),
+        "CS_clayton_ecdf": CS_clayton(estim_u_clayton, theta_oracle, w_clayton),
+        "CLS_f_ecdf": CLS_student_t_copula(estim_u_p, f_rho, df, w_p),
+        "CLS_g_ecdf": CLS_student_t_copula(estim_u_p, g_rho, df, w_p),
+        "CLS_g_for_KL_matching_ecdf": CLS_student_t_copula(estim_u_clayton, g_rho, df, w_clayton),
+        "CLS_p_ecdf": CLS_student_t_copula(estim_u_p, p_rho, df, w_p),
+        "CLS_bb1_ecdf": CLS_bb1(estim_u_clayton, theta_oracle, delta_oracle, w_clayton),
+        "CLS_clayton_ecdf": CLS_clayton(estim_u_clayton, theta_oracle, w_clayton),
     }
+
 if __name__ == '__main__':
+
     results = []
 
     with ProcessPoolExecutor() as executor:
-        futures = [executor.submit(simulate_one_rep, n, df, f_rho, g_rho, p_rho, theta, delta) for _ in range(reps)]
+        futures = [executor.submit(simulate_one_rep, n, df, f_rho, g_rho, p_rho, theta_bb1_oracle,
+                                   delta_bb1_oracle, theta_clayton) for _ in range(reps)]
 
         for future in tqdm(as_completed(futures), total=reps, desc="Running simulations"):
             results.append(future.result())
 
-    vecLogS_student_t_copula_f_oracle = np.array([res["LogS_f_oracle"] for res in results])
-    vecLogS_student_t_copula_g_oracle = np.array([res["LogS_g_oracle"] for res in results])
-    vecLogS_student_t_copula_p_oracle = np.array([res["LogS_p_oracle"] for res in results])
-    vecLogS_bb7_oracle = np.array([res["LogS_bb7_oracle"] for res in results])
+    vecLogS_student_t_copula_f_oracle = np.array([res["LogS_f_oracle"] for res in results]) #DGP1
+    vecLogS_student_t_copula_g_oracle = np.array([res["LogS_g_oracle"] for res in results]) #DGP1
+    vecLogS_student_t_copula_p_oracle = np.array([res["LogS_p_oracle"] for res in results]) #DGP1
+    vecLogS_g_for_KL_matching_oracle = np.array([res["LogS_g_for_KL_matching_oracle"] for res in results]) #DGP2
+    vecLogS_bb1_oracle = np.array([res["LogS_bb1_oracle"] for res in results]) #DGP2
+    vecLogS_clayton_oracle = np.array([res["LogS_clayton_oracle"] for res in results]) #DGP2
 
     vecCS_student_t_copula_f_oracle = np.array([res["CS_f_oracle"] for res in results])
     vecCS_student_t_copula_g_oracle = np.array([res["CS_g_oracle"] for res in results])
     vecCS_student_t_copula_p_oracle = np.array([res["CS_p_oracle"] for res in results])
-    vecCS_bb7_oracle = np.array([res["CS_bb7_oracle"] for res in results])
+    vecCS_g_for_KL_matching_oracle = np.array([res["CS_g_for_KL_matching_oracle"] for res in results])
+    vecCS_bb1_oracle = np.array([res["CS_bb1_oracle"] for res in results])
+    vecCS_clayton_oracle = np.array([res["CS_clayton_oracle"] for res in results])
 
     vecCLS_student_t_copula_f_oracle = np.array([res["CLS_f_oracle"] for res in results])
     vecCLS_student_t_copula_g_oracle = np.array([res["CLS_g_oracle"] for res in results])
     vecCLS_student_t_copula_p_oracle = np.array([res["CLS_p_oracle"] for res in results])
-    vecCLS_bb7_oracle = np.array([res["CLS_bb7_oracle"] for res in results])
+    vecCLS_g_for_KL_matching_oracle = np.array([res["CLS_g_for_KL_matching_oracle"] for res in results])
+    vecCLS_bb1_oracle = np.array([res["CLS_bb1_oracle"] for res in results])
+    vecCLS_clayton_oracle = np.array([res["CLS_clayton_oracle"] for res in results])
 
     vecLogS_student_t_copula_f_ecdf = np.array([res["LogS_f_ecdf"] for res in results])
     vecLogS_student_t_copula_g_ecdf = np.array([res["LogS_g_ecdf"] for res in results])
     vecLogS_student_t_copula_p_ecdf = np.array([res["LogS_p_ecdf"] for res in results])
-    vecLogS_bb7_ecdf = np.array([res["LogS_bb7_ecdf"] for res in results])
+    vecLogS_g_for_KL_matching_ecdf = np.array([res["LogS_g_for_KL_matching_ecdf"] for res in results])
+    vecLogS_bb1_ecdf = np.array([res["LogS_bb1_ecdf"] for res in results])
+    vecLogS_clayton_ecdf = np.array([res["LogS_clayton_ecdf"] for res in results])
 
     vecCS_student_t_copula_f_ecdf = np.array([res["CS_f_ecdf"] for res in results])
     vecCS_student_t_copula_g_ecdf = np.array([res["CS_g_ecdf"] for res in results])
     vecCS_student_t_copula_p_ecdf = np.array([res["CS_p_ecdf"] for res in results])
-    vecCS_bb7_ecdf = np.array([res["CS_bb7_ecdf"] for res in results])
+    vecCS_g_for_KL_matching_ecdf = np.array([res["CS_g_for_KL_matching_ecdf"] for res in results])
+    vecCS_bb1_ecdf = np.array([res["CS_bb1_ecdf"] for res in results])
+    vecCS_clayton_ecdf = np.array([res["CS_clayton_ecdf"] for res in results])
 
     vecCLS_student_t_copula_f_ecdf = np.array([res["CLS_f_ecdf"] for res in results])
     vecCLS_student_t_copula_g_ecdf = np.array([res["CLS_g_ecdf"] for res in results])
     vecCLS_student_t_copula_p_ecdf = np.array([res["CLS_p_ecdf"] for res in results])
-    vecCLS_bb7_ecdf = np.array([res["CLS_bb7_ecdf"] for res in results])
+    vecCLS_g_for_KL_matching_ecdf = np.array([res["CLS_g_for_KL_matching_ecdf"] for res in results])
+    vecCLS_bb1_ecdf = np.array([res["CLS_bb1_ecdf"] for res in results])
+    vecCLS_clayton_ecdf = np.array([res["CLS_clayton_ecdf"] for res in results])
+
+    # vecKL_value_p_bb1_oracle = np.array([res["kl_value_p_bb1_oracle"] for res in results])
+    # vecKL_value_p_bb1_ecdf = np.array([res["kl_value_p_bb1_ecdf"] for res in results])
+    #
+    # vecKL_value_p_g_oracle = np.array([res["kl_value_p_g_oracle"] for res in results])
+    # vecKL_value_p_g_ecdf = np.array([res["kl_value_p_g_ecdf"] for res in results])
 
     LogS_diffs_oracle = vecLogS_student_t_copula_f_oracle - vecLogS_student_t_copula_g_oracle
     CS_diffs_oracle = vecCS_student_t_copula_f_oracle - vecCS_student_t_copula_g_oracle
@@ -252,13 +336,15 @@ if __name__ == '__main__':
     CS_diffs_ecdf3 = vecCS_student_t_copula_f_ecdf - vecCS_student_t_copula_p_ecdf
     CLS_diffs_ecdf3 = vecCLS_student_t_copula_f_ecdf - vecCLS_student_t_copula_p_ecdf
 
-    LogS_diffs_oracle4 = vecLogS_bb7_oracle - vecLogS_student_t_copula_g_oracle
-    CS_diffs_oracle4 = vecCS_bb7_oracle - vecCS_student_t_copula_g_oracle
-    CLS_diffs_oracle4 = vecCLS_bb7_oracle - vecCLS_student_t_copula_g_oracle
+    LogS_diffs_oracle4 = vecLogS_bb1_oracle - vecLogS_g_for_KL_matching_oracle
+    CS_diffs_oracle4 = vecCS_bb1_oracle - vecCS_g_for_KL_matching_oracle
+    CLS_diffs_oracle4 = vecCLS_bb1_oracle - vecCLS_g_for_KL_matching_oracle
 
-    LogS_diffs_ecdf4 = vecLogS_bb7_ecdf - vecLogS_student_t_copula_g_ecdf
-    CS_diffs_ecdf4 = vecCS_bb7_ecdf - vecCS_student_t_copula_g_ecdf
-    CLS_diffs_ecdf4 = vecCLS_bb7_ecdf - vecCLS_student_t_copula_g_ecdf
+    LogS_diffs_ecdf4 = vecLogS_bb1_ecdf - vecLogS_g_for_KL_matching_ecdf
+    CS_diffs_ecdf4 = vecCS_bb1_ecdf - vecCS_g_for_KL_matching_ecdf
+    CLS_diffs_ecdf4 = vecCLS_bb1_ecdf - vecCLS_g_for_KL_matching_ecdf
+
+
 
     # For plotting divide CS and CLS by std dev
     LogS_diffs_ecdf = LogS_diffs_ecdf / LogS_diffs_ecdf.std()
@@ -312,11 +398,17 @@ if __name__ == '__main__':
     # plot_histogram_kde(vecCLS_student_t_copula_f_ecdf, vecCLS_student_t_copula_g_ecdf,
     #                    vecCLS_student_t_copula_p_ecdf, "Conditional Log Score (CLS) for ECDF PITs", "ECDF")
 
-    # plot_score_diff_histogram_kde(LogS_diffs_oracle, LogS_diffs_ecdf, title="Logarithmic Score")
-    # plot_score_diff_histogram_kde(CS_diffs_oracle, CS_diffs_ecdf, title="Censored Score")
-    # plot_score_diff_histogram_kde(CLS_diffs_oracle, CLS_diffs_ecdf, title="Conditional likelihood Score")
+    # plot_score_diff_histogram_kde(LogS_diffs_oracle, LogS_diffs_ecdf, "Logarithmic Score", "...-...")
+    # plot_score_diff_histogram_kde(CS_diffs_oracle, CS_diffs_ecdf, "Censored Score", "...-...")
+    # plot_score_diff_histogram_kde(CLS_diffs_oracle, CLS_diffs_ecdf, "Conditional likelihood Score", "...-...")
 
-    plot_all_score_diffs_side_by_side(score_dict_oracle, score_dict_ecdf, ["LogS", "CS", "CLS"], "f - g")
-    plot_all_score_diffs_side_by_side(score_dict_oracle2, score_dict_ecdf2, ["LogS", "CS", "CLS"], "p - g")
-    plot_all_score_diffs_side_by_side(score_dict_oracle3, score_dict_ecdf3, ["LogS", "CS", "CLS"], "f - p")
-    plot_all_score_diffs_side_by_side(score_dict_oracle4, score_dict_ecdf4, ["LogS", "CS", "CLS"], "bb7 - g")
+    plot_all_score_diffs_side_by_side(score_dict_oracle, score_dict_ecdf, ["LogS", "CS", "CLS"], "f - g (DPG1)")
+    plot_all_score_diffs_side_by_side(score_dict_oracle2, score_dict_ecdf2, ["LogS", "CS", "CLS"], "p - g (DGP1)")
+    plot_all_score_diffs_side_by_side(score_dict_oracle3, score_dict_ecdf3, ["LogS", "CS", "CLS"], "f - p (DGP1")
+    plot_all_score_diffs_side_by_side(score_dict_oracle4, score_dict_ecdf4, ["LogS", "CS", "CLS"], "bb1 - g (DGP2)")
+
+    # print(f"Mean KL divergence, p to bb1, oracle case: {np.mean(vecKL_value_p_bb1_oracle)}")
+    # print(f"Mean KL divergence, p to bb1, ecdf case: {np.mean(vecKL_value_p_bb1_ecdf)}")
+    #
+    # print(f"Mean KL divergence, p to g, oracle case: {np.mean(vecKL_value_p_g_oracle)}")
+    # print(f"Mean KL divergence, p to g, ecdf case: {np.mean(vecKL_value_p_g_ecdf)}")
