@@ -74,12 +74,13 @@ def sim_sGumbel_PITs(n, theta):
             Outputs:
                 survival Gumbel copula PITs
         """
+    if not 1 <= theta <= 17:
+        raise ValueError(f"Gumbel theta={theta:.4f} must be in [1, 17]")
     numpy2ri.activate()
     ro.r.assign('theta', theta)
     ro.r.assign('n', n)
     ro.r('''
         library(VineCopula)
-        set.seed(12085278)
         C <- BiCop(14, par = theta)
         u <- BiCopSim(n, C)
         ''')           # family = 14 → survival Gumbel
@@ -97,7 +98,8 @@ def sGumbel_copula_pdf_from_PITs(u, theta):
         Outputs:
             survival Gumbel copula pdf
     """
-
+    if not 1 <= theta <= 17:
+        raise ValueError(f"Gumbel theta={theta:.4f} must be in [1, 17]")
     numpy2ri.activate()
 
     # Inject the u1, u2, theta, delta variables into R
@@ -107,7 +109,6 @@ def sGumbel_copula_pdf_from_PITs(u, theta):
     # R code
     ro.r('''
         library(VineCopula)
-        set.seed(12085278)
 
         # Define BB1 copula with initial parameters
         cop_model <- BiCop(family = 14, par = theta)
@@ -136,6 +137,8 @@ def LogS_sGumbel(u, theta):
     Output:
         iT x iRep matrix with calculated log scores
     """
+    if not 1 <= theta <= 17:
+        raise ValueError(f"Gumbel theta={theta:.4f} must be in [1, 17]")
 
     mF = sGumbel_copula_pdf_from_PITs(u, theta)
     mF[mF == 0] = 1e-100  # avoid numerical zeros
@@ -160,6 +163,8 @@ def CS_sGumbel(u, theta, w):
     Output:
         scalar of calculated censored log scores
     """
+    if not 1 <= theta <= 17:
+        raise ValueError(f"Gumbel theta={theta:.4f} must be in [1, 17]")
 
     mF = sGumbel_copula_pdf_from_PITs(u, theta)
     mF[mF == 0] = 1e-100  # avoid numerical zeros
@@ -190,6 +195,9 @@ def CLS_sGumbel(u, theta, w):
     Output:
         scalar of calculated conditional log scores
     """
+
+    if not 1 <= theta <= 17:
+        raise ValueError(f"Gumbel theta={theta:.4f} must be in [1, 17]")
 
     mF = sGumbel_copula_pdf_from_PITs(u, theta)
     mF[mF == 0] = 1e-100
@@ -399,7 +407,6 @@ def bb1_copula_pdf_from_PITs(u, theta, delta):
     # R code
     ro.r('''
         library(VineCopula)
-        set.seed(12085278)
 
         # Define BB1 copula with initial parameters
         cop_model <- BiCop(family = 7, par = theta, par2 = delta)
@@ -717,7 +724,6 @@ def R_bb7(u1, u2, theta, delta, resid1, resid2, verbose=True):
     # R code: set BB7 copula and simulate new observations (we can also fit copula params)
     ro.r('''
     library(VineCopula)
-    set.seed(12085278)
 
     # Combine uniform data
     u_data <- cbind(u1, u2)
@@ -839,7 +845,6 @@ def simulate_joint_t_marginals(n, df, theta, delta, verbose=True):
 
     ro.r('''
     library(VineCopula)
-    set.seed(123)
 
     # Simulate PITs
     cop_model <- BiCop(family = 9, par = theta, par2 = delta)
@@ -1163,7 +1168,6 @@ def compare_trueU_ecdfU_score(R, P, H, grid_size, theta, delta, df, verbose=True
 
     ro.r('''
     library(VineCopula)
-    set.seed(123)
 
     # Simulate PITs
     cop_model <- BiCop(family = 17, par = theta, par2 = delta)

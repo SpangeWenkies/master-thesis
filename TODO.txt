@@ -7,12 +7,12 @@ To do:
         Voor de localized moet een localized KLIC gebruikt worden!
             Deze is misschien niet goed gegaan met de shapes van de masks
 
+    De region masks kunnen voor non-finite values zorgen in CS score doordat de weight mask leeg is???
+        validate whether the f PITs (when transformed back via student_t.ppf) ever fall into the sGumbel-defined masked region
 
-
-
+    Bivariate bonferroni bounds?
 
 To do morgen:
-    Code cleanup
     Fix het tweede deel van de simulation die nu kapot lijkt te zijn
 
 Boundary uncertainty extension:
@@ -34,7 +34,9 @@ Scriptie meeting 15-5:
 
 Code algemeen:
 	Als too many configs maak dan een class of een namespace
-	#DONE# CS EN CLS ZIJN FOUT
+	Cache results of BB1 PDF evaluations over large u arrays.
+        Consider vectorized PDF evaluation in R using BiCopPDF() once over a full sample batch.
+        Investigate whether BB1 copula samples and densities can be evaluated once and reused.
 
 Scriptie algemeen:
 BLIJF SCHRIJVEN IN OVERLEAF
