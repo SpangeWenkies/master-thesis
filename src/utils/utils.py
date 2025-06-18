@@ -332,6 +332,29 @@ def estimate_localized_kl(u_samples, pdf_p, pdf_f, region_mask):
     kl_vals = np.log(p_vals / f_vals)
     return np.mean(kl_vals)
 
+def estimate_local_kl(u_samples, pdf_p, pdf_f, region_mask):
+    """
+    Estimates local KL divergence from p to f over a region A.
+
+    Inputs:
+        u_samples : array (n, d) from true copula p
+        pdf_p, pdf_f : functions returning densities from p and f
+        region_mask : boolean mask over u_samples for region A (i.e., indicator weight function)
+
+    Returns:
+        local KL divergence
+    """
+    p_vals = pdf_p(u_samples)
+    f_vals = pdf_f(u_samples)
+    p_vals = np.clip(p_vals, 1e-100, 1e100) # for stability of region mask sparse
+    f_vals = np.clip(f_vals, 1e-100, 1e100)
+    w_vals = region_mask.astype(float)
+
+    ratio = np.clip(p_vals / f_vals, 1e-12, 1e12)
+    kl_terms = w_vals * p_vals * np.log(ratio)
+    # print(f"{np.sum((p_vals / f_vals) < 1e-12)} {np.sum((p_vals / f_vals) > 1e12)}")
+    return np.mean(kl_terms)
+
 ###########################################################
 
 def ecdf_transform(Y):

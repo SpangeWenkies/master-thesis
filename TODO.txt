@@ -4,11 +4,15 @@ To do:
         Wel een multivariate part die te gebruiken is
 
     KLIC matching doen
-        Voor de localized moet een localized KLIC gebruikt worden!
-            Deze is misschien niet goed gegaan met de shapes van de masks
+        Voor de CS en CLS moet een local(ized) KLIC gebruikt worden!
+            De een moet localized en de ander local
+            implement de local in de cls scores calc
 
     De region masks kunnen voor non-finite values zorgen in CS score doordat de weight mask leeg is???
         validate whether the f PITs (when transformed back via student_t.ppf) ever fall into the sGumbel-defined masked region
+
+    In de simulate one rep worden de theta en delta van de bb1 (local(ized)) KL matching niet gebruikt
+        parser broke because of the underscores in the first and last name of pair now
 
     Bivariate bonferroni bounds?
 
@@ -70,4 +74,13 @@ Notes/vragen:
         Moet ik de copula of interest fitten? of kan ik gewoon parameters zetten? fitten lijkt me handiger richting empirisch nut
 
     Moet ik uberhaupt kijken naar smoothing van ECDF door quantile regression of kernel interpolation. Of is dat alleen handig als we een percentile willen zoeken?
+
+PLOT CDF
+Compare first innovations (ARMA-GARCH vb (V)AR(1) SCOMDY) vs residuals effect on the ECDF vs ORACLE plots ()
+Lastly introduce boundary uncertainty for (innov +( ECDF or ORACLE )) or (reside + (ECDF or oracle))
+Robustness checks at end of paper
+Write on the effect of correctly choosing which model to estimate (vb true = AR1, but estimated is AR2) -> also ECDF vs inverse of AR(1) if you assume AR(1) is true
+Slides must be on combinations of uncertainties in the models
+In slides show emperical u vs oracle u (show multiple estimated u lines)
+
 

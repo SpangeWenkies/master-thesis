@@ -45,19 +45,26 @@ def make_score_dicts(diffs, tag_suffixes, score_names):
 
 def make_pair_labels(suffixes):
     """
-    Converts suffixes like 'oracle_f_g' to 'f - g' labels.
+    Converts suffixes like 'oracle_bb1_localized_f_for_KL_matching' to 'bb1_localized - f_for_KL_matching' labels.
 
     Parameters:
-        suffixes: list of string suffixes (e.g. ['oracle_f_g'])
+        suffixes: list of string suffixes (e.g. ['oracle_bb1_localized_f_for_KL_matching'])
 
     Returns:
-        dict mapping each suffix to a pair label (e.g. {'oracle_f_g': 'f - g'})
+        dict mapping each suffix to a pair label (e.g. {'oracle_bb1_localized_f_for_KL_matching': 'bb1_localized - f_for_KL_matching'})
     """
     pair_labels = {}
     for suffix in suffixes:
-        parts = suffix.split("_")  # e.g., ["oracle", "bb1", "g_for_KL_matching"]
+        parts = suffix.split("_")
         pit = parts[0]
         model_a = parts[1]
-        model_b = "_".join(parts[2:])  # allow underscores in model_b
+        # Join the remaining parts, then split the last underscore group into model_b
+        model_and_target = "_".join(parts[2:])
+        if "_" in model_and_target:
+            split_pos = model_and_target.rfind("_")
+            model_b = model_and_target[split_pos+1:]
+            model_a = model_and_target[:split_pos]
+        else:
+            model_b = model_and_target
         pair_labels[suffix] = f"{model_a} - {model_b}"
     return pair_labels

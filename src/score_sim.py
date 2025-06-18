@@ -7,7 +7,11 @@ from utils.plot_utils import *
 from itertools import combinations
 from utils.score_helpers import *
 
-def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_oracle, delta_oracle, theta_sGumbel):
+def simulate_one_rep(n, df, f_rho, g_rho, p_rho,
+                     theta_bb1, delta_bb1,
+                     theta_bb1_localized, delta_bb1_localized,
+                     theta_bb1_local, delta_bb1_local,
+                     theta_sGumbel):
     """
         Helper function for simulating one repetition in multi-threading
 
@@ -37,38 +41,59 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_oracle, delta_oracle, the
         "LogS_g_oracle": LogS_student_t_copula(sim_u_p, g_rho, df), #based on DGP1 (indep. student-t)
         "LogS_f_for_KL_matching_oracle": LogS_student_t_copula(sim_u_sGumbel, f_rho, df), #based on DGP2 (sGumbel)
         "LogS_p_oracle": LogS_student_t_copula(sim_u_p, p_rho, df), #based on DGP1 (indep. student-t)
-        "LogS_bb1_oracle": LogS_bb1(sim_u_sGumbel, theta_oracle, delta_oracle), #based on DGP2 (sGumbel)
         "LogS_sGumbel_oracle": LogS_sGumbel(sim_u_sGumbel, theta_sGumbel), #based on DGP2 (sGumbel)
         "CS_f_oracle": CS_student_t_copula(sim_u_p, f_rho, df, w_p),
         "CS_g_oracle": CS_student_t_copula(sim_u_p, g_rho, df, w_p),
         "CS_f_for_KL_matching_oracle": CS_student_t_copula(sim_u_sGumbel, f_rho, df, w_sGumbel),
         "CS_p_oracle": CS_student_t_copula(sim_u_p, p_rho, df, w_p),
-        "CS_bb1_oracle": CS_bb1(sim_u_sGumbel, theta_oracle, delta_oracle, w_sGumbel),
         "CS_sGumbel_oracle": CS_sGumbel(sim_u_sGumbel, theta_sGumbel, w_sGumbel),
         "CLS_f_oracle": CLS_student_t_copula(sim_u_p, f_rho, df, w_p),
         "CLS_g_oracle": CLS_student_t_copula(sim_u_p, g_rho, df, w_p),
         "CLS_f_for_KL_matching_oracle": CLS_student_t_copula(sim_u_sGumbel, f_rho, df, w_sGumbel),
         "CLS_p_oracle": CLS_student_t_copula(sim_u_p, p_rho, df, w_p),
-        "CLS_bb1_oracle": CLS_bb1(sim_u_sGumbel, theta_oracle, delta_oracle, w_sGumbel),
         "CLS_sGumbel_oracle": CLS_sGumbel(sim_u_sGumbel, theta_sGumbel, w_sGumbel),
+
+        # Log scores
+        "LogS_bb1_oracle": LogS_bb1(sim_u_sGumbel, theta_bb1, delta_bb1),
+        "LogS_bb1_localized_oracle": LogS_bb1(sim_u_sGumbel, theta_bb1_localized, delta_bb1_localized),
+        "LogS_bb1_local_oracle": LogS_bb1(sim_u_sGumbel, theta_bb1_local, delta_bb1_local),
+        # CS scores
+        "CS_bb1_oracle": CS_bb1(sim_u_sGumbel, theta_bb1, delta_bb1, w_sGumbel),
+        "CS_bb1_localized_oracle": CS_bb1(sim_u_sGumbel, theta_bb1_localized, delta_bb1_localized, w_sGumbel),
+        "CS_bb1_local_oracle": CS_bb1(sim_u_sGumbel, theta_bb1_local, delta_bb1_local, w_sGumbel),
+        # CLS scores
+        "CLS_bb1_oracle": CLS_bb1(sim_u_sGumbel, theta_bb1, delta_bb1, w_sGumbel),
+        "CLS_bb1_localized_oracle": CLS_bb1(sim_u_sGumbel, theta_bb1_localized, delta_bb1_localized, w_sGumbel),
+        "CLS_bb1_local_oracle": CLS_bb1(sim_u_sGumbel, theta_bb1_local, delta_bb1_local, w_sGumbel),
+
         "LogS_f_ecdf": LogS_student_t_copula(estim_u_p, f_rho, df),
         "LogS_g_ecdf": LogS_student_t_copula(estim_u_p, g_rho, df),
         "LogS_f_for_KL_matching_ecdf": LogS_student_t_copula(estim_u_sGumbel, f_rho, df),
         "LogS_p_ecdf": LogS_student_t_copula(estim_u_p, p_rho, df),
-        "LogS_bb1_ecdf": LogS_bb1(estim_u_sGumbel, theta_oracle, delta_oracle),
         "LogS_sGumbel_ecdf": LogS_sGumbel(estim_u_sGumbel, theta_sGumbel),
         "CS_f_ecdf": CS_student_t_copula(estim_u_p, f_rho, df, w_p),
         "CS_g_ecdf": CS_student_t_copula(estim_u_p, g_rho, df, w_p),
         "CS_f_for_KL_matching_ecdf": CS_student_t_copula(estim_u_sGumbel, f_rho, df, w_sGumbel),
         "CS_p_ecdf": CS_student_t_copula(estim_u_p, p_rho, df, w_p),
-        "CS_bb1_ecdf": CS_bb1(estim_u_sGumbel, theta_oracle, delta_oracle, w_sGumbel),
         "CS_sGumbel_ecdf": CS_sGumbel(estim_u_sGumbel, theta_sGumbel, w_sGumbel),
         "CLS_f_ecdf": CLS_student_t_copula(estim_u_p, f_rho, df, w_p),
         "CLS_g_ecdf": CLS_student_t_copula(estim_u_p, g_rho, df, w_p),
         "CLS_f_for_KL_matching_ecdf": CLS_student_t_copula(estim_u_sGumbel, f_rho, df, w_sGumbel),
         "CLS_p_ecdf": CLS_student_t_copula(estim_u_p, p_rho, df, w_p),
-        "CLS_bb1_ecdf": CLS_bb1(estim_u_sGumbel, theta_oracle, delta_oracle, w_sGumbel),
         "CLS_sGumbel_ecdf": CLS_sGumbel(estim_u_sGumbel, theta_sGumbel, w_sGumbel),
+
+        # Log scores
+        "LogS_bb1_ecdf": LogS_bb1(estim_u_sGumbel, theta_bb1, delta_bb1),
+        "LogS_bb1_localized_ecdf": LogS_bb1(estim_u_sGumbel, theta_bb1_localized, delta_bb1_localized),
+        "LogS_bb1_local_ecdf": LogS_bb1(estim_u_sGumbel, theta_bb1_local, delta_bb1_local),
+        # CS scores
+        "CS_bb1_ecdf": CS_bb1(estim_u_sGumbel, theta_bb1, delta_bb1, w_sGumbel),
+        "CS_bb1_localized_ecdf": CS_bb1(estim_u_sGumbel, theta_bb1_localized, delta_bb1_localized, w_sGumbel),
+        "CS_bb1_local_ecdf": CS_bb1(estim_u_sGumbel, theta_bb1_local, delta_bb1_local, w_sGumbel),
+        # CLS scores
+        "CLS_bb1_ecdf": CLS_bb1(estim_u_sGumbel, theta_bb1, delta_bb1, w_sGumbel),
+        "CLS_bb1_localized_ecdf": CLS_bb1(estim_u_sGumbel, theta_bb1_localized, delta_bb1_localized, w_sGumbel),
+        "CLS_bb1_local_ecdf": CLS_bb1(estim_u_sGumbel, theta_bb1_local, delta_bb1_local, w_sGumbel),
     }
 
 if __name__ == '__main__':
@@ -95,6 +120,13 @@ if __name__ == '__main__':
         estimate_localized_kl(u, pdf_sGumbel, pdf_f, mask)
         for u, mask in zip(oracle_samples_list, oracle_masks_list)
     ]
+    target_localized_kl_oracle = np.mean(localized_kl_list)
+
+    # Local KL divergence target calculation
+    localized_kl_list = [
+        estimate_local_kl(u, pdf_sGumbel, pdf_f, mask)
+        for u, mask in zip(oracle_samples_list, oracle_masks_list)
+    ]
     target_local_kl_oracle = np.mean(localized_kl_list)
 
 
@@ -109,6 +141,16 @@ if __name__ == '__main__':
         kl_vals = [estimate_kl_divergence_copulas(u, pdf_sGumbel, pdf_bb1) for u in oracle_samples_list]
         return (np.mean(kl_vals) - target_kl_oracle) ** 2
 
+    def bb1_localized_oracle_objective(params):
+        theta, delta = params
+        if theta <= 0 or delta < 1:
+            return np.inf
+        pdf_bb1 = lambda u: bb1_copula_pdf_from_PITs(u, theta, delta)
+        kl_vals = [
+            estimate_localized_kl(u, pdf_sGumbel, pdf_bb1, mask)
+            for u, mask in zip(oracle_samples_list, oracle_masks_list)
+        ]
+        return (np.mean(kl_vals) - target_localized_kl_oracle) ** 2
 
     def bb1_local_oracle_objective(params):
         theta, delta = params
@@ -116,7 +158,7 @@ if __name__ == '__main__':
             return np.inf
         pdf_bb1 = lambda u: bb1_copula_pdf_from_PITs(u, theta, delta)
         kl_vals = [
-            estimate_localized_kl(u, pdf_sGumbel, pdf_bb1, mask)
+            estimate_local_kl(u, pdf_sGumbel, pdf_bb1, mask)
             for u, mask in zip(oracle_samples_list, oracle_masks_list)
         ]
         return (np.mean(kl_vals) - target_local_kl_oracle) ** 2
@@ -127,14 +169,24 @@ if __name__ == '__main__':
         bb1_oracle_objective,
         x0=[2.0, 2.5],
         bounds=bb1_param_bounds,
-        method=kl_match_optim_method
+        method=kl_match_optim_method,
+        options={'disp': True}
     )
     print("on to localized minimization")
+    res_localized_oracle = minimize(
+        bb1_localized_oracle_objective,
+        x0=[2.0, 2.5],
+        bounds=bb1_param_bounds,
+        method=kl_match_optim_method,
+        options={'disp': True}
+    )
+    print("on to local minimization")
     res_local_oracle = minimize(
         bb1_local_oracle_objective,
         x0=[2.0, 2.5],
         bounds=bb1_param_bounds,
-        method=kl_match_optim_method
+        method=kl_match_optim_method,
+        options={'disp': True}
     )
 
     # === Final reporting of KL matching ===
@@ -142,12 +194,17 @@ if __name__ == '__main__':
     theta_bb1_oracle, delta_bb1_oracle = res_oracle.x
     pdf_bb1_opt = lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1_oracle, delta_bb1_oracle)
 
+    theta_bb1_localized_oracle, delta_bb1_localized_oracle = res_localized_oracle.x
+    pdf_bb1_opt_localized = lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1_localized_oracle, delta_bb1_localized_oracle)
+
     theta_bb1_local_oracle, delta_bb1_local_oracle = res_local_oracle.x
     pdf_bb1_opt_local = lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1_local_oracle, delta_bb1_local_oracle)
-    print("on to calculating the final KL")
+
     kl_final = estimate_kl_divergence_copulas(np.vstack(oracle_samples_list), pdf_sGumbel, pdf_bb1_opt)
-    print("on to calculate the final local KL")
-    kl_final_local = estimate_localized_kl(
+    kl_final_localized = estimate_localized_kl(
+        np.vstack(oracle_samples_list), pdf_sGumbel, pdf_bb1_opt_localized, np.concatenate(oracle_masks_list)
+    )
+    kl_final_local = estimate_local_kl(
         np.vstack(oracle_samples_list), pdf_sGumbel, pdf_bb1_opt_local, np.concatenate(oracle_masks_list)
     )
 
@@ -155,18 +212,31 @@ if __name__ == '__main__':
     print(f"Target KL(sGumbel||f) oracle: {target_kl_oracle:.6f}")
     print(f"Optimized KL(sGumbel||bb1): {kl_final:.6f}")
     print(
-        f"Tuned localized BB1 (oracle PITs): theta = {theta_bb1_local_oracle:.4f}, delta = {delta_bb1_local_oracle:.4f}")
-    print(f"Target localized KL(sGumbel||f) oracle: {target_local_kl_oracle:.6f}")
-    print(f"Optimized localized KL(sGumbel||bb1): {kl_final_local:.6f}")
+        f"Tuned localized BB1 (oracle PITs): theta = {theta_bb1_localized_oracle:.4f}, delta = {delta_bb1_localized_oracle:.4f}")
+    print(f"Target localized KL(sGumbel||f) oracle: {target_localized_kl_oracle:.6f}")
+    print(f"Optimized localized KL(sGumbel||bb1): {kl_final_localized:.6f}")
+    print(
+        f"Tuned local BB1 (oracle PITs): theta = {theta_bb1_local_oracle:.4f}, delta = {delta_bb1_local_oracle:.4f}")
+    print(f"Target local KL(sGumbel||f) oracle: {target_local_kl_oracle:.6f}")
+    print(f"Optimized local KL(sGumbel||bb1): {kl_final_local:.6f}")
 
     results = []
 
     with ProcessPoolExecutor() as executor:
-        futures = [executor.submit(simulate_one_rep, n, df, f_rho, g_rho, p_rho, theta_bb1_oracle,
-                                   delta_bb1_oracle, theta_sGumbel) for _ in range(reps)]
+        futures = [executor.submit(
+            simulate_one_rep, n, df, f_rho, g_rho, p_rho,
+            theta_bb1_oracle, delta_bb1_oracle,
+            theta_bb1_localized_oracle, delta_bb1_localized_oracle,
+            theta_bb1_local_oracle, delta_bb1_local_oracle,
+            theta_sGumbel
+        ) for _ in range(reps)]
 
         for future in tqdm(as_completed(futures), total=reps, desc="Running simulations"):
             results.append(future.result())
+
+    print("Sample result keys:")
+    for k in results[0].keys():
+        print(" ", k)
 
     # Store extracted vectors in a dictionary: e.g., vecs["LogS"]["f"]["oracle"]
     vecs = {score: {model: {} for model in all_copula_models} for score in score_types}
@@ -175,10 +245,15 @@ if __name__ == '__main__':
             for pit in pit_types:
                 key = f"{score}_{model}_{pit}"
                 if key in results[0]:  # only include if key exists in result
+                    print(f"Populating vecs[{score}][{model}][{pit}]")
                     vecs[score][model][pit] = np.array([res.get(key, np.nan) for res in results])
+                else:
+                    print(f"Missing key: {key}")
 
     # Get all pairwise model combinations (excluding self-pairs)
     model_pairs = list(combinations(copula_models_for_plots, 2))  # [('f', 'g'), ('f', 'p'), ..., ('bb1', 'f_for_KL_matching')]
+
+    print(model_pairs)
 
     diffs = {}
 
@@ -194,6 +269,9 @@ if __name__ == '__main__':
                 suffix = f"{pit}_{model_a}_{model_b}"  # e.g., oracle_f_g
                 diffs[f"{score}_diffs_{suffix}"] = vec_a - vec_b
 
+    for key in diffs:
+        print(f"{key}")
+
     tag_suffixes = list(diffs.keys())  # All keys are now "{score}_diffs_{pit}_{model_a}_{model_b}"
 
     # Extract suffix from each full key
@@ -208,8 +286,14 @@ if __name__ == '__main__':
     # Create score dictionaries for plotting
     score_dicts = make_score_dicts(diffs, suffixes, score_types)
 
+    print("Available suffixes:", list(score_dicts.keys()))
+
+    validate_plot_data(score_dicts, pair_names, score_types, pair_label=["bb1 - f_for_KL_matching",
+                                                                         "bb1_localized - f_for_KL_matching",
+                                                                         "bb1_local - f_for_KL_matching",
+                                                                         "f - g", "f - p", "g - p"])
 
     # PLOTS
-    # plot_score_differences(score_dicts, score_types, pair_names)  # All
-    plot_score_differences(score_dicts, score_types, pair_names, pair_label=["bb1 - f_for_KL_matching", "f - g", "f - p", "g - p"])
+    plot_score_differences(score_dicts, score_types, pair_to_suffixes)
 
+    plot_aligned_kl_matched_scores(score_dicts, score_score_suffixes)

@@ -104,45 +104,77 @@ def plot_score_diff_histogram_kde(diff_oracle, diff_ecdf, title, title2):
     plt.tight_layout()
     plt.show()
 
-def plot_score_differences(score_dicts, score_names, pair_names, pair_label=None):
+def validate_plot_data(score_dicts, pair_names, score_names, pair_label=None):
     """
-    Plot histograms and KDEs of score differences.
+    Validates that both oracle and ecdf data exist and are valid for each selected pair.
+    """
+    print("=== Validating Plot Data ===")
 
-    Parameters:
-    - score_dicts: dict of {suffix: {score_name: array}}, e.g., {'oracle': {'LogS': ...}, ...}
-    - score_names: list of score names (e.g., ["LogS", "CS", "CLS"])
-    - pair_names: dict mapping suffixes (e.g., 'oracle', 'ecdf2') to pair labels (e.g., 'f - g')
-    - pair_label: optional string; if specified, plot only that copula pair (e.g., "f - g")
-    """
-    # Determine which pairs to include
+    # Apply optional filter
     if pair_label is None:
         selected_pairs = pair_names
     elif isinstance(pair_label, str):
-        selected_pairs = {suffix: label for suffix, label in pair_names.items() if label == pair_label}
+        selected_pairs = {k: v for k, v in pair_names.items() if v == pair_label}
     elif isinstance(pair_label, list):
-        selected_pairs = {suffix: label for suffix, label in pair_names.items() if label in pair_label}
+        selected_pairs = {k: v for k, v in pair_names.items() if v in pair_label}
     else:
         raise ValueError("pair_label must be None, a string, or a list of strings.")
 
-    # Get unique groupings like "f - g", "p - g", etc.
-    unique_pair_labels = sorted(set(selected_pairs.values()))
+    issues_found = False
 
-    for label in unique_pair_labels:
-        # Get the two suffixes (oracle, ecdf) for the current pair
+    for label in sorted(set(selected_pairs.values())):
         suffix_group = [s for s, l in selected_pairs.items() if l == label]
-
         oracle_suffix = next((s for s in suffix_group if "oracle" in s), None)
         ecdf_suffix = next((s for s in suffix_group if "ecdf" in s), None)
 
         if not oracle_suffix or not ecdf_suffix:
-            continue  # Skip if one is missing
+            print(f"Missing oracle or ecdf suffix for pair: {label}")
+            issues_found = True
+            continue
+
+        if oracle_suffix not in score_dicts or ecdf_suffix not in score_dicts:
+            print(f"Missing score_dict entries for: {oracle_suffix}, {ecdf_suffix}")
+            issues_found = True
+            continue
+
+        for score in score_names:
+            data_o = score_dicts[oracle_suffix].get(score, None)
+            data_e = score_dicts[ecdf_suffix].get(score, None)
+
+            if data_o is None or data_e is None:
+                print(f"Missing score '{score}' for pair {label}")
+                issues_found = True
+            elif len(data_o) == 0 or len(data_e) == 0:
+                print(f"Empty data for '{score}' in pair {label}")
+                issues_found = True
+            elif not np.all(np.isfinite(data_o)) or not np.all(np.isfinite(data_e)):
+                print(f"Non-finite values in '{score}' for pair {label}")
+                issues_found = True
+
+    if not issues_found:
+        print("✅ All selected pairs are valid for plotting.")
+
+def plot_score_differences(score_dicts, score_names, pair_to_suffixes):
+    """
+    Plot histograms and KDEs of score differences using explicitly passed suffixes per pair.
+
+    Parameters:
+    - score_dicts: dict of {suffix: {score_name: array}}
+    - score_names: list of score names
+    - pair_to_suffixes: dict mapping plot label (e.g. "f - g") -> (oracle_suffix, ecdf_suffix)
+    """
+    for label, (oracle_suffix, ecdf_suffix) in pair_to_suffixes.items():
+        if oracle_suffix not in score_dicts or ecdf_suffix not in score_dicts:
+            print(f"Skipping {label} — missing: "
+                  f"{'oracle' if oracle_suffix not in score_dicts else ''} "
+                  f"{'ecdf' if ecdf_suffix not in score_dicts else ''}")
+            continue
 
         oracle_scores = score_dicts[oracle_suffix]
         ecdf_scores = score_dicts[ecdf_suffix]
 
         num_scores = len(score_names)
         fig, axes = plt.subplots(1, num_scores, figsize=(6 * num_scores, 5), sharey=True)
-
         if num_scores == 1:
             axes = [axes]
 
@@ -171,3 +203,60 @@ def plot_score_differences(score_dicts, score_names, pair_names, pair_label=None
         fig.suptitle(f"Score Differences for {label}", fontsize=16)
         plt.tight_layout(rect=[0, 0, 1, 0.95])
         plt.show()
+
+
+def plot_aligned_kl_matched_scores(score_dicts, score_score_suffixes):
+    """
+    Plots three score difference histograms/KDEs aligned horizontally.
+
+    Parameters:
+    - score_dicts: dict of {suffix: {score_name: np.ndarray}}, as constructed from your diffs.
+    - score_score_suffixes: list of tuples:
+        [
+            (score_name, label, oracle_suffix, ecdf_suffix),
+            ...
+        ]
+      For example:
+        [
+            ("LogS", "bb1 - f_for_KL_matching", "oracle_bb1_f_for_KL_matching", "ecdf_bb1_f_for_KL_matching"),
+            ("CS", "bb1_localized - f_for_KL_matching", "oracle_bb1_localized_f_for_KL_matching", "ecdf_bb1_localized_f_for_KL_matching"),
+            ("CLS", "bb1_local - f_for_KL_matching", "oracle_bb1_local_f_for_KL_matching", "ecdf_bb1_local_f_for_KL_matching"),
+        ]
+    """
+    num_scores = len(score_score_suffixes)
+    fig, axes = plt.subplots(1, num_scores, figsize=(6 * num_scores, 5), sharey=True)
+
+    if num_scores == 1:
+        axes = [axes]
+
+    for ax, (score, label, oracle_suffix, ecdf_suffix) in zip(axes, score_score_suffixes):
+        if oracle_suffix not in score_dicts or ecdf_suffix not in score_dicts:
+            print(f" Skipping {label} — missing: "
+                  f"{'oracle' if oracle_suffix not in score_dicts else ''} "
+                  f"{'ecdf' if ecdf_suffix not in score_dicts else ''}")
+            continue
+
+        oracle_data = score_dicts[oracle_suffix][score]
+        ecdf_data = score_dicts[ecdf_suffix][score]
+
+        kde_oracle = gaussian_kde(oracle_data)
+        kde_ecdf = gaussian_kde(ecdf_data)
+
+        x_min = min(oracle_data.min(), ecdf_data.min())
+        x_max = max(oracle_data.max(), ecdf_data.max())
+        x_grid = np.linspace(x_min, x_max, 500)
+
+        ax.hist(oracle_data, bins=30, alpha=0.3, density=True, label='Oracle', color='blue')
+        ax.hist(ecdf_data, bins=30, alpha=0.3, density=True, label='ECDF', color='orange')
+        ax.plot(x_grid, kde_oracle(x_grid), label='KDE Oracle', linewidth=2, color='blue')
+        ax.plot(x_grid, kde_ecdf(x_grid), label='KDE ECDF', linewidth=2, color='orange')
+
+        ax.set_title(f"{score} — {label}")
+        ax.set_xlabel("Score Difference")
+        ax.grid(True)
+
+    axes[0].set_ylabel("Density")
+    axes[0].legend()
+    fig.suptitle("KL-Matched Score Differences", fontsize=16)
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    plt.show()
