@@ -68,3 +68,33 @@ def make_pair_labels(suffixes):
             model_b = model_and_target
         pair_labels[suffix] = f"{model_a} - {model_b}"
     return pair_labels
+
+def t_test_per_replication(diff_matrix):
+    """Return p-values from t-tests applied row-wise.
+
+    Parameters
+    ----------
+    diff_matrix : array-like, shape (reps, n)
+        Each row contains the score differences for a single replication.
+
+    Returns
+    -------
+    numpy.ndarray
+        Array of p-values for the null of zero mean difference per replication.
+    """
+    from scipy.stats import ttest_1samp
+
+    diff_matrix = np.asarray(diff_matrix)
+    res = ttest_1samp(diff_matrix, popmean=0, axis=1, nan_policy="omit")
+    return res.pvalue
+
+
+def perform_size_tests(p_values, alpha_grid=None):
+    """Compute size-discrepancy curve using per-replication p-values."""
+    if alpha_grid is None:
+        alpha_grid = np.linspace(0.01, 0.1, 10)
+
+    p_values = np.asarray(p_values)
+    rejection_rates = np.array([(p_values < a).mean() for a in alpha_grid])
+    discrepancies = rejection_rates - alpha_grid
+    return alpha_grid, rejection_rates, discrepancies

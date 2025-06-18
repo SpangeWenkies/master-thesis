@@ -36,65 +36,99 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho,
     estim_u_sGumbel = ecdf_transform(samples_sGumbel)
     w_sGumbel = region_weight_function(n, sim_u_sGumbel, 0.05, df)
 
-    return {
-        "LogS_f_oracle": LogS_student_t_copula(sim_u_p, f_rho, df), #based on DGP1 (indep. student-t)
-        "LogS_g_oracle": LogS_student_t_copula(sim_u_p, g_rho, df), #based on DGP1 (indep. student-t)
-        "LogS_f_for_KL_matching_oracle": LogS_student_t_copula(sim_u_sGumbel, f_rho, df), #based on DGP2 (sGumbel)
-        "LogS_p_oracle": LogS_student_t_copula(sim_u_p, p_rho, df), #based on DGP1 (indep. student-t)
-        "LogS_sGumbel_oracle": LogS_sGumbel(sim_u_sGumbel, theta_sGumbel), #based on DGP2 (sGumbel)
-        "CS_f_oracle": CS_student_t_copula(sim_u_p, f_rho, df, w_p),
-        "CS_g_oracle": CS_student_t_copula(sim_u_p, g_rho, df, w_p),
-        "CS_f_for_KL_matching_oracle": CS_student_t_copula(sim_u_sGumbel, f_rho, df, w_sGumbel),
-        "CS_p_oracle": CS_student_t_copula(sim_u_p, p_rho, df, w_p),
-        "CS_sGumbel_oracle": CS_sGumbel(sim_u_sGumbel, theta_sGumbel, w_sGumbel),
-        "CLS_f_oracle": CLS_student_t_copula(sim_u_p, f_rho, df, w_p),
-        "CLS_g_oracle": CLS_student_t_copula(sim_u_p, g_rho, df, w_p),
-        "CLS_f_for_KL_matching_oracle": CLS_student_t_copula(sim_u_sGumbel, f_rho, df, w_sGumbel),
-        "CLS_p_oracle": CLS_student_t_copula(sim_u_p, p_rho, df, w_p),
-        "CLS_sGumbel_oracle": CLS_sGumbel(sim_u_sGumbel, theta_sGumbel, w_sGumbel),
+    def score_vectors(u, w, pdf_func):
+        pdf = pdf_func(u)
+        pdf[pdf == 0] = 1e-100
+        log_pdf = np.log(pdf)
+        if w.ndim == 1:
+            Fw_bar = np.sum(pdf * w) / np.sum(w)
+            Fw_bar = max(Fw_bar, 1e-100)
+            CS_vec = w * log_pdf + (1 - w) * np.log(Fw_bar)
+            F_total = np.sum(pdf)
+            F_outside = np.sum(pdf * (1 - w))
+            F_outside = min(F_outside, F_total - 1e-100)
+            log_1_minus_Fw = np.log(F_outside / F_total + 1e-100)
+            CLS_vec = w * (log_pdf - log_1_minus_Fw)
+        else:
+            row_w = w.sum(axis=1)
+            row_not_w = w.shape[1] - row_w
+            Fw_bar = np.sum(pdf * w) / np.sum(w)
+            Fw_bar = max(Fw_bar, 1e-100)
+            CS_vec = row_w * log_pdf + row_not_w * np.log(Fw_bar)
+            F_total = np.sum(pdf)
+            F_outside = np.sum(pdf * (1 - w))
+            F_outside = min(F_outside, F_total - 1e-100)
+            log_1_minus_Fw = np.log(F_outside / F_total + 1e-100)
+            CLS_vec = row_w * (log_pdf - log_1_minus_Fw)
+        return log_pdf, CS_vec, CLS_vec
 
-        # Log scores
-        "LogS_bb1_oracle": LogS_bb1(sim_u_sGumbel, theta_bb1, delta_bb1),
-        "LogS_bb1_localized_oracle": LogS_bb1(sim_u_sGumbel, theta_bb1_localized, delta_bb1_localized),
-        "LogS_bb1_local_oracle": LogS_bb1(sim_u_sGumbel, theta_bb1_local, delta_bb1_local),
-        # CS scores
-        "CS_bb1_oracle": CS_bb1(sim_u_sGumbel, theta_bb1, delta_bb1, w_sGumbel),
-        "CS_bb1_localized_oracle": CS_bb1(sim_u_sGumbel, theta_bb1_localized, delta_bb1_localized, w_sGumbel),
-        "CS_bb1_local_oracle": CS_bb1(sim_u_sGumbel, theta_bb1_local, delta_bb1_local, w_sGumbel),
-        # CLS scores
-        "CLS_bb1_oracle": CLS_bb1(sim_u_sGumbel, theta_bb1, delta_bb1, w_sGumbel),
-        "CLS_bb1_localized_oracle": CLS_bb1(sim_u_sGumbel, theta_bb1_localized, delta_bb1_localized, w_sGumbel),
-        "CLS_bb1_local_oracle": CLS_bb1(sim_u_sGumbel, theta_bb1_local, delta_bb1_local, w_sGumbel),
-
-        "LogS_f_ecdf": LogS_student_t_copula(estim_u_p, f_rho, df),
-        "LogS_g_ecdf": LogS_student_t_copula(estim_u_p, g_rho, df),
-        "LogS_f_for_KL_matching_ecdf": LogS_student_t_copula(estim_u_sGumbel, f_rho, df),
-        "LogS_p_ecdf": LogS_student_t_copula(estim_u_p, p_rho, df),
-        "LogS_sGumbel_ecdf": LogS_sGumbel(estim_u_sGumbel, theta_sGumbel),
-        "CS_f_ecdf": CS_student_t_copula(estim_u_p, f_rho, df, w_p),
-        "CS_g_ecdf": CS_student_t_copula(estim_u_p, g_rho, df, w_p),
-        "CS_f_for_KL_matching_ecdf": CS_student_t_copula(estim_u_sGumbel, f_rho, df, w_sGumbel),
-        "CS_p_ecdf": CS_student_t_copula(estim_u_p, p_rho, df, w_p),
-        "CS_sGumbel_ecdf": CS_sGumbel(estim_u_sGumbel, theta_sGumbel, w_sGumbel),
-        "CLS_f_ecdf": CLS_student_t_copula(estim_u_p, f_rho, df, w_p),
-        "CLS_g_ecdf": CLS_student_t_copula(estim_u_p, g_rho, df, w_p),
-        "CLS_f_for_KL_matching_ecdf": CLS_student_t_copula(estim_u_sGumbel, f_rho, df, w_sGumbel),
-        "CLS_p_ecdf": CLS_student_t_copula(estim_u_p, p_rho, df, w_p),
-        "CLS_sGumbel_ecdf": CLS_sGumbel(estim_u_sGumbel, theta_sGumbel, w_sGumbel),
-
-        # Log scores
-        "LogS_bb1_ecdf": LogS_bb1(estim_u_sGumbel, theta_bb1, delta_bb1),
-        "LogS_bb1_localized_ecdf": LogS_bb1(estim_u_sGumbel, theta_bb1_localized, delta_bb1_localized),
-        "LogS_bb1_local_ecdf": LogS_bb1(estim_u_sGumbel, theta_bb1_local, delta_bb1_local),
-        # CS scores
-        "CS_bb1_ecdf": CS_bb1(estim_u_sGumbel, theta_bb1, delta_bb1, w_sGumbel),
-        "CS_bb1_localized_ecdf": CS_bb1(estim_u_sGumbel, theta_bb1_localized, delta_bb1_localized, w_sGumbel),
-        "CS_bb1_local_ecdf": CS_bb1(estim_u_sGumbel, theta_bb1_local, delta_bb1_local, w_sGumbel),
-        # CLS scores
-        "CLS_bb1_ecdf": CLS_bb1(estim_u_sGumbel, theta_bb1, delta_bb1, w_sGumbel),
-        "CLS_bb1_localized_ecdf": CLS_bb1(estim_u_sGumbel, theta_bb1_localized, delta_bb1_localized, w_sGumbel),
-        "CLS_bb1_local_ecdf": CLS_bb1(estim_u_sGumbel, theta_bb1_local, delta_bb1_local, w_sGumbel),
+    model_info = {
+        "f": {
+            "oracle": (sim_u_p, w_p, lambda u: student_t_copula_pdf_from_PITs(u, f_rho, df)),
+            "ecdf": (estim_u_p, w_p, lambda u: student_t_copula_pdf_from_PITs(u, f_rho, df)),
+        },
+        "g": {
+            "oracle": (sim_u_p, w_p, lambda u: student_t_copula_pdf_from_PITs(u, g_rho, df)),
+            "ecdf": (estim_u_p, w_p, lambda u: student_t_copula_pdf_from_PITs(u, g_rho, df)),
+        },
+        "p": {
+            "oracle": (sim_u_p, w_p, lambda u: student_t_copula_pdf_from_PITs(u, p_rho, df)),
+            "ecdf": (estim_u_p, w_p, lambda u: student_t_copula_pdf_from_PITs(u, p_rho, df)),
+        },
+        "bb1": {
+            "oracle": (sim_u_sGumbel, w_sGumbel, lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1, delta_bb1)),
+            "ecdf": (estim_u_sGumbel, w_sGumbel, lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1, delta_bb1)),
+        },
+        "bb1_localized": {
+            "oracle": (
+            sim_u_sGumbel, w_sGumbel, lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1_localized, delta_bb1_localized)),
+            "ecdf": (estim_u_sGumbel, w_sGumbel,
+                     lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1_localized, delta_bb1_localized)),
+        },
+        "bb1_local": {
+            "oracle": (
+            sim_u_sGumbel, w_sGumbel, lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1_local, delta_bb1_local)),
+            "ecdf": (
+            estim_u_sGumbel, w_sGumbel, lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1_local, delta_bb1_local)),
+        },
+        "f_for_KL_matching": {
+            "oracle": (sim_u_sGumbel, w_sGumbel, lambda u: student_t_copula_pdf_from_PITs(u, f_rho, df)),
+            "ecdf": (estim_u_sGumbel, w_sGumbel, lambda u: student_t_copula_pdf_from_PITs(u, f_rho, df)),
+        },
+        "sGumbel": {
+            "oracle": (sim_u_sGumbel, w_sGumbel, lambda u: sGumbel_copula_pdf_from_PITs(u, theta_sGumbel)),
+            "ecdf": (estim_u_sGumbel, w_sGumbel, lambda u: sGumbel_copula_pdf_from_PITs(u, theta_sGumbel)),
+        },
     }
+
+    score_vecs = {score: {model: {} for model in model_info} for score in score_types}
+
+    for model, pits in model_info.items():
+        for pit, (u_dat, w_dat, pdf_func) in pits.items():
+            log_v, cs_v, cls_v = score_vectors(u_dat, w_dat, pdf_func)
+            score_vecs["LogS"][model][pit] = log_v
+            score_vecs["CS"][model][pit] = cs_v
+            score_vecs["CLS"][model][pit] = cls_v
+
+    results = {}
+
+    for score in score_types:
+        for model in model_info:
+            for pit in pit_types:
+                vec = score_vecs[score][model][pit]
+                results[f"{score}_{model}_{pit}"] = np.sum(vec)
+                results[f"{score}_vec_{model}_{pit}"] = vec
+
+    # Pairwise difference vectors
+    model_pairs = list(combinations(copula_models_for_plots, 2))
+    for model_a, model_b in model_pairs:
+        for pit in pit_types:
+            for score in score_types:
+                vec_a = score_vecs[score][model_a][pit]
+                vec_b = score_vecs[score][model_b][pit]
+                results[f"{score}_diff_vec_{pit}_{model_a}_{model_b}"] = vec_a - vec_b
+
+    return results
 
 if __name__ == '__main__':
 
