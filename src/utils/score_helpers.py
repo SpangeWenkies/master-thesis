@@ -90,11 +90,21 @@ def t_test_per_replication(diff_matrix):
 
 
 def perform_size_tests(p_values, alpha_grid=None):
-    """Compute size-discrepancy curve using per-replication p-values."""
+    """Compute size-discrepancy curve using per-replication p-values.
+
+    Parameters
+    ----------
+    p_values : array-like
+        P-values from individual replications.
+    alpha_grid : array-like, optional
+        Significance levels over which to evaluate the test size.
+    """
     if alpha_grid is None:
-        alpha_grid = np.linspace(0.01, 0.1, 10)
+        alpha_grid = np.linspace(0.01, 0.2, 20)
 
     p_values = np.asarray(p_values)
+    # For each alpha compute the empirical rejection rate.  The comprehension
+    # returns a vector of the same length as ``alpha_grid``.
     rejection_rates = np.array([(p_values < a).mean() for a in alpha_grid])
     discrepancies = rejection_rates - alpha_grid
     return alpha_grid, rejection_rates, discrepancies

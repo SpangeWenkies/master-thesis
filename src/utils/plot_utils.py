@@ -34,6 +34,7 @@ def Plot(vX, sTitle, bLine):
     plt.title(sTitle, fontsize=lFigureSettings['titlefontsize'])
     plt.show()
 
+
 def plot_histogram_kde(data_f, data_g, data_p, title, pit_type):
     """
         Plots histogram and KDE lines
@@ -411,3 +412,44 @@ def plot_size_test_results(size_results, score_names, alpha=0.05):
         ax.grid(True)
         plt.tight_layout()
         plt.show()
+
+def plot_size_curves(size_curve_dict, pair_labels, plot_type="discrepancy", title=None):
+    """Plot size discrepancy or rejection rate curves.
+
+    Parameters
+    ----------
+    size_curve_dict : dict
+        Mapping suffix -> (alpha_grid, rejection_rates, discrepancies).
+    pair_labels : dict
+        Mapping suffix -> human readable pair label.
+    plot_type : {"discrepancy", "rejection"}
+        Select y-axis content.
+    title : str, optional
+        Title for the plot.
+    """
+
+    if plot_type not in {"discrepancy", "rejection"}:
+        raise ValueError("plot_type must be 'discrepancy' or 'rejection'")
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+
+    for suffix, (alpha_grid, rejection_rates, discrepancies) in size_curve_dict.items():
+        label = pair_labels.get(suffix, suffix)
+        y = discrepancies if plot_type == "discrepancy" else rejection_rates
+        ax.plot(alpha_grid, y, marker="o", label=label)
+
+    ax.set_xlabel("alpha")
+    if plot_type == "discrepancy":
+        ax.set_ylabel("rejection rate - alpha")
+        ax.axhline(0, color="gray", linestyle="--", linewidth=1)
+    else:
+        ax.set_ylabel("rejection rate")
+        ax.plot([0, 1], [0, 1], "--", color="gray", linewidth=1)
+
+    if title is None:
+        title = "Size Curves"
+    ax.set_title(title)
+    ax.legend()
+    ax.grid(True)
+    plt.tight_layout()
+    plt.show()

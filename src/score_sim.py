@@ -290,6 +290,7 @@ if __name__ == '__main__':
     print(model_pairs)
 
     diffs = {}
+    diff_mats = {}
 
     for pit in pit_types:
         for score in score_types:
@@ -302,6 +303,9 @@ if __name__ == '__main__':
 
                 suffix = f"{pit}_{model_a}_{model_b}"  # e.g., oracle_f_g
                 diffs[f"{score}_diffs_{suffix}"] = vec_a - vec_b
+                diff_mats[f"{score}_diffs_{suffix}"] = np.vstack([
+                    res[f"{score}_diff_vec_{suffix}"] for res in results
+                ])
 
     for key in diffs:
         print(f"{key}")
@@ -314,6 +318,28 @@ if __name__ == '__main__':
     # Optional: for plotting labels
     pair_names = make_pair_labels(suffixes)
 
+    # === Size tests ===
+    p_values = {k: t_test_per_replication(mat) for k, mat in diff_mats.items()}
+    size_curves = {k: perform_size_tests(v) for k, v in p_values.items()}
+
+    # Restrict plots to the configured pairs.  "pair_to_suffixes" maps a label
+    # (e.g. "f - g") to the corresponding oracle/ecdf suffixes produced above.
+    target_suffixes = [s for pair in pair_to_suffixes_size.values() for s in pair]
+    pair_labels_subset = {
+        suf: f"{label} ({'oracle' if 'oracle' in suf else 'ecdf'})"
+        for label, (oracle_suf, ecdf_suf) in pair_to_suffixes_size.items()
+        for suf in (oracle_suf, ecdf_suf)
+    }
+
+    for score in score_types:
+        subset = {
+            suf: size_curves[f"{score}_diffs_{suf}"]
+            for suf in target_suffixes
+            if f"{score}_diffs_{suf}" in size_curves
+        }
+        plot_size_curves(subset, pair_labels_subset, plot_type="discrepancy", title=f"{score} Size Discrepancy")
+        plot_size_curves(subset, pair_labels_subset, plot_type="rejection", title=f"{score} Rejection Rates")
+
     # For plotting divide CS and CLS by std dev
     diffs = {k: div_by_stdev(k, v) for k, v in diffs.items()}
 
@@ -322,10 +348,10 @@ if __name__ == '__main__':
 
     print("Available suffixes:", list(score_dicts.keys()))
 
-    validate_plot_data(score_dicts, pair_names, score_types, pair_label=["bb1 - f_for_KL_matching",
-                                                                         "bb1_localized - f_for_KL_matching",
-                                                                         "bb1_local - f_for_KL_matching",
-                                                                         "f - g", "f - p", "g - p"])
+    # validate_plot_data(score_dicts, pair_names, score_types, pair_label=["bb1 - f_for_KL_matching",
+    #                                                                      "bb1_localized - f_for_KL_matching",
+    #                                                                      "bb1_local - f_for_KL_matching",
+    #                                                                      "f - g", "f - p", "g - p"])
 
     # --- Plots for score differences ---
     plot_score_differences(score_dicts, score_types, pair_to_suffixes)
@@ -333,8 +359,3 @@ if __name__ == '__main__':
     plot_aligned_kl_matched_scores(score_dicts, score_score_suffixes)
 
     plot_aligned_kl_matched_scores_cdf(score_dicts, score_score_suffixes)
-
-    # --- Size testing for equal predictive accuracy ---
-    pair_to_suffixes_size = {"f - g": ("oracle_f_g", "ecdf_f_g")}
-    size_results = perform_size_tests(score_dicts, score_types, pair_to_suffixes_size)
-    plot_size_test_results(size_results, score_types)

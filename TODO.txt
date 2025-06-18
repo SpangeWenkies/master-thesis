@@ -83,4 +83,14 @@ Write on the effect of correctly choosing which model to estimate (vb true = AR1
 Slides must be on combinations of uncertainties in the models
 In slides show emperical u vs oracle u (show multiple estimated u lines)
 
+Size discrepancy plots:
+    Lijkt of de CS size discrepancy totaal niet klopt.
+    De size discrepancies zijn allemaal op een grid van 0.01? hoort volgens mij veel meer te verschillen door de rejection rate
+    De 95% point-wise significance intervals moeten worden laten zien ook.
+    Vraag chat ipv alleen codex
+    Zoek uit wat te doen met de rolling window??? kutzooi
+
+
+
+
 
