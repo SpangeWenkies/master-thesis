@@ -204,6 +204,55 @@ def plot_score_differences(score_dicts, score_names, pair_to_suffixes):
         plt.tight_layout(rect=[0, 0, 1, 0.95])
         plt.show()
 
+def plot_score_differences_cdf(score_dicts, score_names, pair_to_suffixes):
+    """
+    Plot empirical CDFs of score differences using explicitly passed suffixes per pair.
+
+    Parameters
+    ----------
+    score_dicts : dict
+        Dictionary mapping suffix -> {score_name: array}.
+    score_names : list
+        List of score names to plot.
+    pair_to_suffixes : dict
+        Mapping plot label (e.g. "f - g") -> (oracle_suffix, ecdf_suffix).
+    """
+    for label, (oracle_suffix, ecdf_suffix) in pair_to_suffixes.items():
+        if oracle_suffix not in score_dicts or ecdf_suffix not in score_dicts:
+            print(
+                f"Skipping {label} — missing: "
+                f"{'oracle' if oracle_suffix not in score_dicts else ''} "
+                f"{'ecdf' if ecdf_suffix not in score_dicts else ''}"
+            )
+            continue
+
+        oracle_scores = score_dicts[oracle_suffix]
+        ecdf_scores = score_dicts[ecdf_suffix]
+
+        num_scores = len(score_names)
+        fig, axes = plt.subplots(1, num_scores, figsize=(6 * num_scores, 5), sharey=True)
+        if num_scores == 1:
+            axes = [axes]
+
+        for ax, score in zip(axes, score_names):
+            data_oracle = np.sort(oracle_scores[score])
+            data_ecdf = np.sort(ecdf_scores[score])
+
+            cdf_oracle = np.arange(1, len(data_oracle) + 1) / len(data_oracle)
+            cdf_ecdf = np.arange(1, len(data_ecdf) + 1) / len(data_ecdf)
+
+            ax.step(data_oracle, cdf_oracle, where="post", label="Oracle", color="blue")
+            ax.step(data_ecdf, cdf_ecdf, where="post", label="ECDF", color="orange")
+
+            ax.set_title(f"{score}: Oracle vs ECDF")
+            ax.set_xlabel("Score Difference")
+            ax.set_ylabel("Empirical CDF")
+            ax.legend()
+            ax.grid(True)
+
+        fig.suptitle(f"Score Differences for {label}", fontsize=16)
+        plt.tight_layout(rect=[0, 0, 1, 0.95])
+        plt.show()
 
 def plot_aligned_kl_matched_scores(score_dicts, score_score_suffixes):
     """
@@ -256,6 +305,51 @@ def plot_aligned_kl_matched_scores(score_dicts, score_score_suffixes):
         ax.grid(True)
 
     axes[0].set_ylabel("Density")
+    axes[0].legend()
+    fig.suptitle("KL-Matched Score Differences", fontsize=16)
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    plt.show()
+
+def plot_aligned_kl_matched_scores_cdf(score_dicts, score_score_suffixes):
+    """
+    Plot three score difference CDFs aligned horizontally.
+
+    Parameters
+    ----------
+    score_dicts : dict
+        Mapping suffix -> {score_name: np.ndarray}.
+    score_score_suffixes : list of tuples
+        [(score_name, label, oracle_suffix, ecdf_suffix), ...]
+    """
+    num_scores = len(score_score_suffixes)
+    fig, axes = plt.subplots(1, num_scores, figsize=(6 * num_scores, 5), sharey=True)
+
+    if num_scores == 1:
+        axes = [axes]
+
+    for ax, (score, label, oracle_suffix, ecdf_suffix) in zip(axes, score_score_suffixes):
+        if oracle_suffix not in score_dicts or ecdf_suffix not in score_dicts:
+            print(
+                f" Skipping {label} — missing: "
+                f"{'oracle' if oracle_suffix not in score_dicts else ''} "
+                f"{'ecdf' if ecdf_suffix not in score_dicts else ''}"
+            )
+            continue
+
+        oracle_data = np.sort(score_dicts[oracle_suffix][score])
+        ecdf_data = np.sort(score_dicts[ecdf_suffix][score])
+
+        cdf_oracle = np.arange(1, len(oracle_data) + 1) / len(oracle_data)
+        cdf_ecdf = np.arange(1, len(ecdf_data) + 1) / len(ecdf_data)
+
+        ax.step(oracle_data, cdf_oracle, where="post", label="Oracle", color="blue")
+        ax.step(ecdf_data, cdf_ecdf, where="post", label="ECDF", color="orange")
+
+        ax.set_title(f"{score} — {label}")
+        ax.set_xlabel("Score Difference")
+        ax.grid(True)
+
+    axes[0].set_ylabel("Empirical CDF")
     axes[0].legend()
     fig.suptitle("KL-Matched Score Differences", fontsize=16)
     plt.tight_layout(rect=[0, 0, 1, 0.95])

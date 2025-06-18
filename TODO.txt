@@ -26,7 +26,7 @@ Boundary uncertainty extension:
 Simulation study:
     Repeat de 2010 onderzoek van diks et al, maar gebruik nu de true u'tjes ipv ecdf based als 'echte' gebruiken (size en power vergelijken)
         --> score differences tussen de symmetricaly misspecified f en g zijn distributed rond 1 ipv 0
-        --> kijk wat diks et al study doet met de forecasted u en de rolling window
+        --> kijk wat diks et al study doet met de forecasted u en de rolling window -> rolling misschien niet nodig bij mijn versie???
 	    --> Kijk hoe fitten van de andere copulas effect heeft op empirical??? (true is bb7 en nu gebruiken we ook bb7 om de boundary te bekijken)
 
 Scriptie meeting 15-5:

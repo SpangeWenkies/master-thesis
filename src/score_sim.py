@@ -297,3 +297,5 @@ if __name__ == '__main__':
     plot_score_differences(score_dicts, score_types, pair_to_suffixes)
 
     plot_aligned_kl_matched_scores(score_dicts, score_score_suffixes)
+
+    plot_aligned_kl_matched_scores_cdf(score_dicts, score_score_suffixes)
