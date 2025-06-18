@@ -293,9 +293,14 @@ if __name__ == '__main__':
                                                                          "bb1_local - f_for_KL_matching",
                                                                          "f - g", "f - p", "g - p"])
 
-    # PLOTS
+    # --- Plots for score differences ---
     plot_score_differences(score_dicts, score_types, pair_to_suffixes)
 
     plot_aligned_kl_matched_scores(score_dicts, score_score_suffixes)
 
     plot_aligned_kl_matched_scores_cdf(score_dicts, score_score_suffixes)
+
+    # --- Size testing for equal predictive accuracy ---
+    pair_to_suffixes_size = {"f - g": ("oracle_f_g", "ecdf_f_g")}
+    size_results = perform_size_tests(score_dicts, score_types, pair_to_suffixes_size)
+    plot_size_test_results(size_results, score_types)

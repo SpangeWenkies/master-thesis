@@ -1161,6 +1161,61 @@ def rejection_rate(differences, alpha=0.05):
     reject = p_val < alpha
     return reject, p_val
 
+def perform_size_test(differences, alpha=0.05):
+    """Perform a size test for equal predictive accuracy.
+
+    Parameters
+    ----------
+    differences : array-like
+        Vector of score differences (model f minus model g).
+    alpha : float, optional
+        Significance level for the test.
+
+    Returns
+    -------
+    dict
+        Dictionary with boolean ``reject`` flag, the ``t_stat`` value and
+        the ``p_value`` of the test.
+    """
+    t_stat, p_val = ttest_1samp(differences, popmean=0)
+    return {"reject": p_val < alpha, "t_stat": t_stat, "p_value": p_val}
+
+def perform_size_tests(score_dicts, score_names, pair_to_suffixes, alpha=0.05):
+    """Compute size test results for multiple score differences.
+
+    Parameters
+    ----------
+    score_dicts : dict
+        Mapping ``suffix -> {score: array}`` as produced by ``make_score_dicts``.
+    score_names : list
+        List of score names to evaluate.
+    pair_to_suffixes : dict
+        Mapping plot label -> (oracle_suffix, ecdf_suffix).
+    alpha : float, optional
+        Significance level for the tests.
+
+    Returns
+    -------
+    dict
+        Nested dictionary ``{label: {score: {oracle|ecdf: result}}}`` where each
+        ``result`` is the output of :func:`perform_size_test`.
+    """
+    results = {}
+    for label, (oracle_suffix, ecdf_suffix) in pair_to_suffixes.items():
+        if oracle_suffix not in score_dicts or ecdf_suffix not in score_dicts:
+            continue
+        res_pair = {}
+        for score in score_names:
+            diff_oracle = score_dicts[oracle_suffix][score]
+            diff_ecdf = score_dicts[ecdf_suffix][score]
+            res_pair[score] = {
+                "oracle": perform_size_test(diff_oracle, alpha),
+                "ecdf": perform_size_test(diff_ecdf, alpha),
+            }
+        results[label] = res_pair
+    return results
+
+
 ###########################################################
 def compare_trueU_ecdfU_score(R, P, H, grid_size, theta, delta, df, verbose=True):
     """

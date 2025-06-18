@@ -104,6 +104,39 @@ def plot_score_diff_histogram_kde(diff_oracle, diff_ecdf, title, title2):
     plt.tight_layout()
     plt.show()
 
+def plot_score_diff_cdf(diff_oracle, diff_ecdf, title, title2):
+    """
+    Plot empirical CDFs of score differences using oracle and ECDF-based PITs.
+
+    Parameters
+    ----------
+    diff_oracle : np.ndarray
+        Score differences (copula 1 - copula 2) calculated with oracle PITs.
+    diff_ecdf : np.ndarray
+        Score differences (copula 1 - copula 2) calculated with ECDF PITs.
+    title : str
+        Name of the score type (e.g. "LogS", "CS", "CLS").
+    title2 : str
+        Additional title descriptor, typically the copula pair.
+    """
+    sorted_oracle = np.sort(diff_oracle)
+    sorted_ecdf = np.sort(diff_ecdf)
+
+    cdf_oracle = np.arange(1, len(sorted_oracle) + 1) / len(sorted_oracle)
+    cdf_ecdf = np.arange(1, len(sorted_ecdf) + 1) / len(sorted_ecdf)
+
+    plt.figure(figsize=(10, 6))
+    plt.step(sorted_oracle, cdf_oracle, where="post", label="Oracle PITs", color="purple")
+    plt.step(sorted_ecdf, cdf_ecdf, where="post", label="ECDF PITs", color="orange")
+
+    plt.title(f"{title} – Score Difference {title2}")
+    plt.xlabel("Score Difference")
+    plt.ylabel("Empirical CDF")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
 def validate_plot_data(score_dicts, pair_names, score_names, pair_label=None):
     """
     Validates that both oracle and ecdf data exist and are valid for each selected pair.
@@ -354,3 +387,27 @@ def plot_aligned_kl_matched_scores_cdf(score_dicts, score_score_suffixes):
     fig.suptitle("KL-Matched Score Differences", fontsize=16)
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     plt.show()
+
+
+def plot_size_test_results(size_results, score_names, alpha=0.05):
+    """Visualize p-values from size tests across score types."""
+
+    for label, res_pair in size_results.items():
+        oracle_pvals = [res_pair[sc]["oracle"]["p_value"] for sc in score_names]
+        ecdf_pvals = [res_pair[sc]["ecdf"]["p_value"] for sc in score_names]
+
+        indices = np.arange(len(score_names))
+        width = 0.35
+
+        fig, ax = plt.subplots(figsize=(6, 5))
+        ax.bar(indices - width / 2, oracle_pvals, width, label="Oracle")
+        ax.bar(indices + width / 2, ecdf_pvals, width, label="ECDF")
+        ax.axhline(alpha, color="red", linestyle="--", label=f"alpha={alpha}")
+        ax.set_xticks(indices)
+        ax.set_xticklabels(score_names)
+        ax.set_ylabel("p-value")
+        ax.set_title(f"Size Test p-values – {label}")
+        ax.legend()
+        ax.grid(True)
+        plt.tight_layout()
+        plt.show()

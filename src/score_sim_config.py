@@ -18,9 +18,9 @@ score_types = ["LogS", "CS", "CLS"]
 all_copula_models = ["f", "g", "p", "bb1", "bb1_local", "bb1_localized", "f_for_KL_matching", "sGumbel"]
 copula_models_for_plots = ["f", "g", "p", "bb1", "bb1_local", "bb1_localized", "f_for_KL_matching",]
 pair_to_suffixes = {
-    "bb1 - f_for_KL_matching": ("oracle_bb1_f_for_KL_matching", "ecdf_bb1_f_for_KL_matching"),
-    "bb1_localized - f_for_KL_matching": ("oracle_bb1_localized_f_for_KL_matching", "ecdf_bb1_localized_f_for_KL_matching"),
-    "bb1_local - f_for_KL_matching": ("oracle_bb1_local_f_for_KL_matching", "ecdf_bb1_local_f_for_KL_matching"),
+    # "bb1 - f_for_KL_matching": ("oracle_bb1_f_for_KL_matching", "ecdf_bb1_f_for_KL_matching"),
+    # "bb1_localized - f_for_KL_matching": ("oracle_bb1_localized_f_for_KL_matching", "ecdf_bb1_localized_f_for_KL_matching"),
+    # "bb1_local - f_for_KL_matching": ("oracle_bb1_local_f_for_KL_matching", "ecdf_bb1_local_f_for_KL_matching"),
     "f - g": ("oracle_f_g", "ecdf_f_g"),
     "f - p": ("oracle_f_p", "ecdf_f_p"),
     "g - p": ("oracle_g_p", "ecdf_g_p")
