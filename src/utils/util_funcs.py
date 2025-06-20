@@ -13,6 +13,9 @@ from scipy.stats import ttest_1samp
 from tqdm import tqdm
 import scipy.optimize as opt
 from concurrent.futures import ProcessPoolExecutor
+import logging
+
+logger = logging.getLogger(__name__)
 
 def sample_region_mask(u, q_threshold, df):
     """Return a 1D indicator mask for PIT observations within a region.
@@ -687,7 +690,7 @@ def AvgNLnLGARCHTr(vGARCHParamsTr, iP, vY):
 
 ###########################################################
 ### vY= GARCHEstim(vGARCHParams0, iP, vY)
-def GARCHEstim(vGARCHParams0, iP, vY):
+def GARCHEstim(vGARCHParams0, iP, vY, verbose=True):
     """
     Purpose:
         Estimate GARCH(p,q)
@@ -707,8 +710,14 @@ def GARCHEstim(vGARCHParams0, iP, vY):
     vGARCHParamsStar = np.exp(vGARCHParamsStarTr)
     sMess = res.message
     dLL = -iT * res.fun
-    print("\nBFGS results in ", sMess, "\nParameter estimates (MLE): ", vGARCHParamsStar, "\nLog-likelihood= ", dLL,
-          ", f-eval= ", res.nfev)
+    if verbose:
+        logger.info(
+            "\nBFGS results in %s\nParameter estimates (MLE): %s\nLog-likelihood= %s, f-eval= %s",
+            sMess,
+            vGARCHParamsStar,
+            dLL,
+            res.nfev,
+        )
 
     return vGARCHParamsStar
 
@@ -1362,10 +1371,10 @@ def compare_trueU_ecdfU_score(R, P, H, grid_size, theta, delta, df, verbose=True
         CS_true_train, CLS_true_train = compute_scores_over_region(copula_pdf, W_true_train)
 
     if verbose:
-        print(f"CLS (ECDF region):  {results['CLS_emp']:.4f}")
-        print(f"CLS (True region):  {results['CLS_true']:.4f}")
-        print(f"CS (ECDF region):  {results['CS_emp']:.4f}")
-        print(f"CS (True region):  {results['CS_true']:.4f}")
+        logger.info("CLS (ECDF region):  %.4f", results['CLS_emp'])
+        logger.info("CLS (True region):  %.4f", results['CLS_true'])
+        logger.info("CS (ECDF region):  %.4f", results['CS_emp'])
+        logger.info("CS (True region):  %.4f", results['CS_true'])
 
         plt.figure(figsize=(8, 6))
         plt.contour(U1, U2, W_emp, levels=[0.5], colors='red', linewidths=2, label="ECDF Region")
@@ -1454,20 +1463,20 @@ def compare_trueU_ecdfU_score_test_version(R, P, H, grid_size, df, verbose=True)
     ]
 
     if verbose:
-        print(f"CLS of f (oracle region):  {results[1]:.4f}")
-        print(f"CLS of f (ECDF region):  {results[5]:.4f}")
-        print(f"CLS of g (oracle region):  {results[3]:.4f}")
-        print(f"CLS of g (ECDF region):  {results[7]:.4f}")
-        print("")
-        print(f"CS of f (oracle region):  {results[0]:.4f}")
-        print(f"CS of f (ECDF region):  {results[4]:.4f}")
-        print(f"CS of g (oracle region):  {results[2]:.4f}")
-        print(f"CS of g (ECDF region):  {results[6]:.4f}")
-        print("")
-        print(f"CLS difference of ecdf case (f-g):  {results[8]:.4f}")
-        print(f"CLS difference of oracle case (f-g):  {results[9]:.4f}")
-        print(f"CS difference of ecdf case (f-g):  {results[10]:.4f}")
-        print(f"CS difference of oracle case (f-g):  {results[11]:.4f}")
+        logger.info("CLS of f (oracle region):  %.4f", results[1])
+        logger.info("CLS of f (ECDF region):  %.4f", results[5])
+        logger.info("CLS of g (oracle region):  %.4f", results[3])
+        logger.info("CLS of g (ECDF region):  %.4f", results[7])
+        logger.info("")
+        logger.info("CS of f (oracle region):  %.4f", results[0])
+        logger.info("CS of f (ECDF region):  %.4f", results[4])
+        logger.info("CS of g (oracle region):  %.4f", results[2])
+        logger.info("CS of g (ECDF region):  %.4f", results[6])
+        logger.info("")
+        logger.info("CLS difference of ecdf case (f-g):  %.4f", results[8])
+        logger.info("CLS difference of oracle case (f-g):  %.4f", results[9])
+        logger.info("CS difference of ecdf case (f-g):  %.4f", results[10])
+        logger.info("CS difference of oracle case (f-g):  %.4f", results[11])
 
 
 
