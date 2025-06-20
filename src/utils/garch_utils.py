@@ -11,7 +11,23 @@ logger = logging.getLogger(__name__)
 
 
 def WhiteNoiseSim(iT: int, vDistrParams: np.ndarray, sDistrName: str) -> np.ndarray:
-    """Generate white noise from a supported distribution."""
+    """Generate white noise series.
+
+    Parameters
+    ----------
+    iT : int
+        Length of the series.
+    vDistrParams : ndarray of shape (p,)
+        Parameters for the chosen distribution. For ``'t'`` this is
+        ``[df]``.
+    sDistrName : {'normal', 't'}
+        Name of the distribution.
+
+    Returns
+    -------
+    ndarray of shape (iT,)
+        Generated white noise.
+    """
     if iT <= 0:
         raise ValueError("iT must be positive")
     lDistrName = ['normal', 't']
@@ -24,8 +40,33 @@ def WhiteNoiseSim(iT: int, vDistrParams: np.ndarray, sDistrName: str) -> np.ndar
     return np.random.standard_t(vDistrParams[0], size=iT)
 
 
-def GARCHSim(iT: int, vGARCHParams: np.ndarray, iP: int, vDistrParams: np.ndarray, sDistrName: str) -> np.ndarray:
-    """Simulate a GARCH(p,q) process."""
+def GARCHSim(
+    iT: int,
+    vGARCHParams: np.ndarray,
+    iP: int,
+    vDistrParams: np.ndarray,
+    sDistrName: str,
+) -> np.ndarray:
+    """Simulate a univariate GARCH process.
+
+    Parameters
+    ----------
+    iT : int
+        Length of the simulated series.
+    vGARCHParams : ndarray of shape (iP + q + 1,)
+        Parameters ``[omega, alpha_1, ..., alpha_p, beta_1, ..., beta_q]``.
+    iP : int
+        Order ``p`` of the ARCH part.
+    vDistrParams : ndarray of shape (p,)
+        Parameters for the innovation distribution.
+    sDistrName : {'normal', 't'}
+        Distribution of the innovations.
+
+    Returns
+    -------
+    ndarray of shape (iT,)
+        Simulated GARCH series.
+    """
     if iT <= 0:
         raise ValueError("iT must be positive")
     if vGARCHParams.size < iP + 1:
@@ -49,7 +90,22 @@ def GARCHSim(iT: int, vGARCHParams: np.ndarray, iP: int, vDistrParams: np.ndarra
 
 
 def AvgNLnLGARCH(vGARCHParams: np.ndarray, iP: int, vY: np.ndarray) -> float:
-    """Negative average log-likelihood of a GARCH(p,q) model."""
+    """Negative average log-likelihood of a GARCH model.
+
+    Parameters
+    ----------
+    vGARCHParams : ndarray of shape (iP + q + 1,)
+        Parameters ``[omega, alpha_1, ..., alpha_p, beta_1, ..., beta_q]``.
+    iP : int
+        Order ``p`` of the ARCH component.
+    vY : ndarray of shape (n,)
+        Observed series.
+
+    Returns
+    -------
+    float
+        Negative mean log-likelihood.
+    """
     dOmega = vGARCHParams[0]
     vAlpha = vGARCHParams[1:iP + 1]
     vBeta = vGARCHParams[iP + 1:]
@@ -67,13 +123,35 @@ def AvgNLnLGARCH(vGARCHParams: np.ndarray, iP: int, vY: np.ndarray) -> float:
 
 
 def AvgNLnLGARCHTr(vGARCHParamsTr: np.ndarray, iP: int, vY: np.ndarray) -> float:
-    """Wrapper around :func:`AvgNLnLGARCH` for transformed parameters."""
+    """Wrapper for :func:`AvgNLnLGARCH` using log-transformed parameters."""
     vGARCHParams = np.exp(vGARCHParamsTr)
     return AvgNLnLGARCH(vGARCHParams, iP, vY)
 
 
-def GARCHEstim(vGARCHParams0: np.ndarray, iP: int, vY: np.ndarray, verbose: bool = True) -> np.ndarray:
-    """Estimate GARCH parameters by maximum likelihood."""
+def GARCHEstim(
+    vGARCHParams0: np.ndarray,
+    iP: int,
+    vY: np.ndarray,
+    verbose: bool = True,
+) -> np.ndarray:
+    """Estimate GARCH parameters via maximum likelihood.
+
+    Parameters
+    ----------
+    vGARCHParams0 : ndarray of shape (iP + q + 1,)
+        Initial parameter guess ``[omega, alpha_1, ..., alpha_p, beta_1, ...]``.
+    iP : int
+        Order ``p`` of the ARCH component.
+    vY : ndarray of shape (n,)
+        Observed series.
+    verbose : bool, default True
+        If ``True``, print optimisation information.
+
+    Returns
+    -------
+    ndarray of shape (iP + q + 1,)
+        Estimated parameter vector.
+    """
     iT = len(vY)
     vGARCHParams0Tr = np.log(vGARCHParams0)
     res = opt.minimize(AvgNLnLGARCHTr, vGARCHParams0Tr, args=(iP, vY), method="BFGS")
@@ -91,13 +169,52 @@ def GARCHEstim(vGARCHParams0: np.ndarray, iP: int, vY: np.ndarray, verbose: bool
 
 
 def resid_to_unif_PIT_ECDF(residuals: np.ndarray) -> np.ndarray:
-    """Map residuals to PIT values using the ECDF."""
+    """Transform residuals to PIT values using the ECDF.
+
+    Parameters
+    ----------
+    residuals : ndarray of shape (n,)
+        Residual series.
+
+    Returns
+    -------
+    ndarray of shape (n,)
+        Probability integral transform of ``residuals``.
+    """
     ranks = rankdata(residuals, method="average")
     return ranks / (len(residuals) + 1)
 
 
-def simulate_GARCH(n: int, omega: float, alpha: float, beta: float, dist: str, df: np.ndarray = np.array([5])):
-    """Simulate two correlated GARCH processes."""
+def simulate_GARCH(
+    n: int,
+    omega: float,
+    alpha: float,
+    beta: float,
+    dist: str,
+    df: np.ndarray = np.array([5]),
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Simulate two independent GARCH processes.
+
+    Parameters
+    ----------
+    n : int
+        Series length.
+    omega : float
+        Long run variance level.
+    alpha : float
+        ARCH coefficient.
+    beta : float
+        GARCH coefficient.
+    dist : {'normal', 't'}
+        Distribution of the innovations.
+    df : ndarray of shape (1,), default ``np.array([5])``
+        Degrees of freedom when ``dist='t'``.
+
+    Returns
+    -------
+    tuple of ndarray
+        ``(resid1, var1, noise1, resid2, var2, noise2)`` each of shape ``(n,)``.
+    """
     if dist == "normal":
         white_noise1 = np.random.normal(size=n)
         white_noise2 = np.random.normal(size=n)

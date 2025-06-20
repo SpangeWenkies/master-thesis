@@ -2,8 +2,21 @@ import numpy as np
 from typing import Iterable, Dict
 from .structure_defs import DiffKey
 
-def div_by_stdev(name, vec):
-    """Standardize a vector by its standard deviation."""
+def div_by_stdev(name: str, vec: np.ndarray) -> np.ndarray:
+    """Standardize ``vec`` by its standard deviation.
+
+    Parameters
+    ----------
+    name : str
+        Identifier used in warning messages.
+    vec : ndarray of shape (n,)
+        Data vector to standardize.
+
+    Returns
+    -------
+    ndarray of shape (n,)
+        Standardized vector.
+    """
     if vec.size == 0 or not np.isfinite(vec).all():
         print(f"Warning: vector '{name}' has non-finite values or is empty")
         return vec  # or return np.full_like(vec, np.nan)
@@ -15,8 +28,27 @@ def div_by_stdev(name, vec):
 
     return vec / std
 
-def make_score_dicts(diffs: dict, keys: Iterable[DiffKey], score_names: Iterable[str]) -> Dict[DiffKey, Dict[str, np.ndarray]]:
-    """Organize difference vectors into nested dictionaries"""
+def make_score_dicts(
+    diffs: dict,
+    keys: Iterable[DiffKey],
+    score_names: Iterable[str],
+) -> Dict[DiffKey, Dict[str, np.ndarray]]:
+    """Organize difference vectors into nested dictionaries.
+
+    Parameters
+    ----------
+    diffs : dict
+        Mapping ``score_name`` -> ``{DiffKey: array}``.
+    keys : Iterable[DiffKey]
+        Keys identifying the differences to collect.
+    score_names : Iterable[str]
+        Names of the scores stored in ``diffs``.
+
+    Returns
+    -------
+    Dict[DiffKey, Dict[str, ndarray]]
+        Nested mapping ``DiffKey -> {score_name: array}``.
+    """
     score_dicts: Dict[DiffKey, Dict[str, np.ndarray]] = {}
     for key in keys:
         score_dicts[key] = {
@@ -26,18 +58,18 @@ def make_score_dicts(diffs: dict, keys: Iterable[DiffKey], score_names: Iterable
         }
     return score_dicts
 
-def t_test_per_replication(diff_matrix):
-    """Return p-values from t-tests applied row-wise.
+def t_test_per_replication(diff_matrix: np.ndarray) -> np.ndarray:
+    """Row-wise t-tests of zero mean difference.
 
     Parameters
     ----------
-    diff_matrix : array-like, shape (reps, n)
-        Each row contains the score differences for a single replication.
+    diff_matrix : ndarray of shape (reps, n)
+        Each row contains the score differences for one replication.
 
     Returns
     -------
-    numpy.ndarray
-        Array of p-values for the null of zero mean difference per replication.
+    ndarray of shape (reps,)
+        P-values for ``H0: mean(diff) = 0`` per replication.
     """
     from scipy.stats import ttest_1samp
 
@@ -46,15 +78,21 @@ def t_test_per_replication(diff_matrix):
     return res.pvalue
 
 
-def perform_size_tests(p_values, alpha_grid=None):
+def perform_size_tests(p_values: np.ndarray, alpha_grid: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Compute size-discrepancy curve using per-replication p-values.
 
     Parameters
     ----------
-    p_values : array-like
+    p_values : ndarray of shape (reps,)
         P-values from individual replications.
-    alpha_grid : array-like, optional
-        Significance levels over which to evaluate the test size.
+    alpha_grid : ndarray of shape (m,), optional
+        Significance levels over which to evaluate the test size. If ``None``,
+        a default grid between 0.01 and 0.2 is used.
+
+    Returns
+    -------
+    tuple of ndarray
+        ``(alpha_grid, rejection_rates, discrepancies)`` each of shape ``(m,)``.
     """
     if alpha_grid is None:
         alpha_grid = np.linspace(0.01, 0.2, 20)
