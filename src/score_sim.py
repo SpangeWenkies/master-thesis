@@ -61,7 +61,8 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho,
     samples_p = multivariate_t.rvs(loc=[0, 0], shape=[[1, 0], [0, 1]], df=df, size=n)
     total_oracle_u_p = student_t.cdf(samples_p, df)
     total_ecdf_u_p = ecdf_transform(samples_p)  #DIT MOET MISSCHIEN total_oracle_u_p GEBRUIKEN
-    w_p = region_weight_function(n, total_oracle_u_p, q_threshold, df)
+    # Mask each observation to include only the tail region in the scores
+    w_p = sample_region_mask(total_oracle_u_p, q_threshold, df)
 
     # Define DGP2 (survival Gumbel)
     total_oracle_u_sGumbel = sim_sGumbel_PITs(n, theta_sGumbel)
@@ -70,7 +71,7 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho,
         student_t.ppf(total_oracle_u_sGumbel[:, 1], df)
     ])
     total_ecdf_u_sGumbel = ecdf_transform(samples_sGumbel)  #DIT MOET MISSCHIEN total_oracle_u_sGumbel GEBRUIKEN
-    w_sGumbel = region_weight_function(n, total_oracle_u_sGumbel, 0.05, df)
+    w_sGumbel = sample_region_mask(total_oracle_u_sGumbel, 0.05, df)
 
     ecdf_u_p = np.empty((P, R, 2))
     oracle_u_p = np.empty((P, R, 2))
@@ -162,7 +163,7 @@ if __name__ == '__main__':
 
     # Simulate oracle survival Gumbel PITs & region masks based on those PITs once to reuse
     oracle_samples_list = [sim_sGumbel_PITs(n, theta_sGumbel) for _ in range(reps)]
-    oracle_masks_list = [region_weight_function_for_kl_match(u, q_threshold, df=df) for u in oracle_samples_list]
+    oracle_masks_list = [sample_region_mask(u, q_threshold, df=df) for u in oracle_samples_list]
 
     # Define PDFs
     pdf_sGumbel = lambda u: sGumbel_copula_pdf_from_PITs(u, theta_sGumbel)
