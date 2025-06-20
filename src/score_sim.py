@@ -61,18 +61,10 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho,
     total_ecdf_u_sGumbel = ecdf_transform(samples_sGumbel)  #DIT MOET MISSCHIEN total_oracle_u_sGumbel GEBRUIKEN
     w_sGumbel = region_weight_function(n, total_oracle_u_sGumbel, 0.05, df)
 
-    diff_log_oracle = np.empty(P)
-    diff_log_ecdf = np.empty(P)
-    diff_cs_oracle = np.empty(P)
-    diff_cs_ecdf = np.empty(P)
-    diff_cls_oracle = np.empty(P)
-    diff_cls_ecdf = np.empty(P)
     ecdf_u_p = np.empty((P, R, 2))
     oracle_u_p = np.empty((P, R, 2))
     ecdf_u_sGumbel = np.empty((P, R, 2))
     oracle_u_sGumbel = np.empty((P, R, 2))
-
-
 
     for k, t in enumerate(range(R, R+P)):
         ecdf_u_p[k] = ecdf_transform(samples_p[t-R:t])
