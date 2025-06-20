@@ -3,17 +3,17 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from utils.plot_utils import Plot
-from utils.utils import simulate_GARCH
-from utils.utils import resid_to_unif_PIT_ECDF
-from utils.utils import R_bb7
-from utils.utils import inverse_ecdf
-from utils.utils import simulate_joint_t_marginals
-from utils.utils import WhiteNoiseSim
-from utils.utils import evaluate_mass_in_region
-from utils.utils import compute_scores_over_region
-from utils.utils import compare_trueU_ecdfU_score
-from utils.utils import compare_trueU_ecdfU_score_test_version
-from utils.utils import compare_trueU_ecdfU_score_t_loop
+from utils.util_funcs import simulate_GARCH
+from utils.util_funcs import resid_to_unif_PIT_ECDF
+from utils.util_funcs import R_bb7
+from utils.util_funcs import inverse_ecdf
+from utils.util_funcs import simulate_joint_t_marginals
+from utils.util_funcs import WhiteNoiseSim
+from utils.util_funcs import evaluate_mass_in_region
+from utils.util_funcs import compute_scores_over_region
+from utils.util_funcs import compare_trueU_ecdfU_score
+from utils.util_funcs import compare_trueU_ecdfU_score_test_version
+from utils.util_funcs import compare_trueU_ecdfU_score_t_loop
 from config import iSeed, n, omega, alpha, beta, dist, nu, theta, delta, grid_size, R, P, H, iterations
 
 

@@ -1,4 +1,6 @@
-from utils.utils import *
+import numpy as np
+
+from utils.util_funcs import *
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from tqdm import tqdm
 from scipy.optimize import minimize
@@ -6,6 +8,18 @@ from score_sim_config import *
 from utils.plot_utils import *
 from itertools import combinations
 from utils.score_helpers import *
+
+SCORE_FUNCS = {
+    "student_t": {"LogS": LogS_student_t_copula,
+                  "CS":   CS_student_t_copula,
+                  "CLS":  CLS_student_t_copula},
+    "sGumbel":   {"LogS": LogS_sGumbel,
+                  "CS":   CS_sGumbel,
+                  "CLS":  CLS_sGumbel},
+    "bb1":       {"LogS": LogS_bb1,
+                  "CS":   CS_bb1,
+                  "CLS":  CLS_bb1}
+}
 
 def simulate_one_rep(n, df, f_rho, g_rho, p_rho,
                      theta_bb1, delta_bb1,
@@ -21,114 +35,115 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho,
         Returns:
             different scores of the candidates and true DGP
         """
+
+    def score_vectors(u, model_id, score_type, **kwargs):
+        """
+        u          : (n, 2) array of PITs or pseudo-obs
+        model_id   : 'student_t' | 'sGumbel' | 'bb1'            (string)
+        score_type : 'LogS' | 'CS' | 'CLS'                     (string)
+        kwargs     : parameters that the specific scorer needs
+        """
+        scorer = SCORE_FUNCS[model_id][score_type]
+        return scorer(u, **kwargs)  # <-- ALWAYS utils.py!
+
     # Define DGP1 (indep. student-t)
     samples_p = multivariate_t.rvs(loc=[0, 0], shape=[[1, 0], [0, 1]], df=df, size=n)
-    estim_u_p = ecdf_transform(samples_p)
-    sim_u_p = student_t.cdf(samples_p, df)
-    w_p = region_weight_function(n, sim_u_p, q_threshold, df)
+    total_oracle_u_p = student_t.cdf(samples_p, df)
+    total_ecdf_u_p = ecdf_transform(samples_p)  #DIT MOET MISSCHIEN total_oracle_u_p GEBRUIKEN
+    w_p = region_weight_function(n, total_oracle_u_p, q_threshold, df)
 
     # Define DGP2 (survival Gumbel)
-    sim_u_sGumbel = sim_sGumbel_PITs(n, theta_sGumbel)
+    total_oracle_u_sGumbel = sim_sGumbel_PITs(n, theta_sGumbel)
     samples_sGumbel = np.column_stack([
-        student_t.ppf(sim_u_sGumbel[:, 0], df),
-        student_t.ppf(sim_u_sGumbel[:, 1], df)
+        student_t.ppf(total_oracle_u_sGumbel[:, 0], df),
+        student_t.ppf(total_oracle_u_sGumbel[:, 1], df)
     ])
-    estim_u_sGumbel = ecdf_transform(samples_sGumbel)
-    w_sGumbel = region_weight_function(n, sim_u_sGumbel, 0.05, df)
+    total_ecdf_u_sGumbel = ecdf_transform(samples_sGumbel)  #DIT MOET MISSCHIEN total_oracle_u_sGumbel GEBRUIKEN
+    w_sGumbel = region_weight_function(n, total_oracle_u_sGumbel, 0.05, df)
 
-    def score_vectors(u, w, pdf_func):
-        pdf = pdf_func(u)
-        pdf[pdf == 0] = 1e-100
-        log_pdf = np.log(pdf)
-        if w.ndim == 1:
-            Fw_bar = np.sum(pdf * w) / np.sum(w)
-            Fw_bar = max(Fw_bar, 1e-100)
-            CS_vec = w * log_pdf + (1 - w) * np.log(Fw_bar)
-            F_total = np.sum(pdf)
-            F_outside = np.sum(pdf * (1 - w))
-            F_outside = min(F_outside, F_total - 1e-100)
-            log_1_minus_Fw = np.log(F_outside / F_total + 1e-100)
-            CLS_vec = w * (log_pdf - log_1_minus_Fw)
-        else:
-            row_w = w.sum(axis=1)
-            row_not_w = w.shape[1] - row_w
-            Fw_bar = np.sum(pdf * w) / np.sum(w)
-            Fw_bar = max(Fw_bar, 1e-100)
-            CS_vec = row_w * log_pdf + row_not_w * np.log(Fw_bar)
-            F_total = np.sum(pdf)
-            F_outside = np.sum(pdf * (1 - w))
-            F_outside = min(F_outside, F_total - 1e-100)
-            log_1_minus_Fw = np.log(F_outside / F_total + 1e-100)
-            CLS_vec = row_w * (log_pdf - log_1_minus_Fw)
-        return log_pdf, CS_vec, CLS_vec
+    diff_log_oracle = np.empty(P)
+    diff_log_ecdf = np.empty(P)
+    diff_cs_oracle = np.empty(P)
+    diff_cs_ecdf = np.empty(P)
+    diff_cls_oracle = np.empty(P)
+    diff_cls_ecdf = np.empty(P)
+    ecdf_u_p = np.empty((P, R, 2))
+    oracle_u_p = np.empty((P, R, 2))
+    ecdf_u_sGumbel = np.empty((P, R, 2))
+    oracle_u_sGumbel = np.empty((P, R, 2))
+
+
+
+    for k, t in enumerate(range(R, R+P)):
+        ecdf_u_p[k] = ecdf_transform(samples_p[t-R:t])
+        oracle_u_p[k] = total_oracle_u_p[t-R:t]
+        ecdf_u_sGumbel[k] = ecdf_transform(samples_sGumbel[t-R:t])
+        oracle_u_sGumbel[k] = total_oracle_u_sGumbel[t - R:t]
+
 
     model_info = {
         "f": {
-            "oracle": (sim_u_p, w_p, lambda u: student_t_copula_pdf_from_PITs(u, f_rho, df)),
-            "ecdf": (estim_u_p, w_p, lambda u: student_t_copula_pdf_from_PITs(u, f_rho, df)),
+            "oracle": (total_oracle_u_p, w_p, lambda u: student_t_copula_pdf_from_PITs(u, f_rho, df)),
+            "ecdf": (total_ecdf_u_p, w_p, lambda u: student_t_copula_pdf_from_PITs(u, f_rho, df)),
         },
         "g": {
-            "oracle": (sim_u_p, w_p, lambda u: student_t_copula_pdf_from_PITs(u, g_rho, df)),
-            "ecdf": (estim_u_p, w_p, lambda u: student_t_copula_pdf_from_PITs(u, g_rho, df)),
+            "oracle": (total_oracle_u_p, w_p, lambda u: student_t_copula_pdf_from_PITs(u, g_rho, df)),
+            "ecdf": (total_ecdf_u_p, w_p, lambda u: student_t_copula_pdf_from_PITs(u, g_rho, df)),
         },
         "p": {
-            "oracle": (sim_u_p, w_p, lambda u: student_t_copula_pdf_from_PITs(u, p_rho, df)),
-            "ecdf": (estim_u_p, w_p, lambda u: student_t_copula_pdf_from_PITs(u, p_rho, df)),
+            "oracle": (total_oracle_u_p, w_p, lambda u: student_t_copula_pdf_from_PITs(u, p_rho, df)),
+            "ecdf": (total_ecdf_u_p, w_p, lambda u: student_t_copula_pdf_from_PITs(u, p_rho, df)),
         },
         "bb1": {
-            "oracle": (sim_u_sGumbel, w_sGumbel, lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1, delta_bb1)),
-            "ecdf": (estim_u_sGumbel, w_sGumbel, lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1, delta_bb1)),
+            "oracle": (total_oracle_u_sGumbel, w_sGumbel, lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1, delta_bb1)),
+            "ecdf": (total_ecdf_u_sGumbel, w_sGumbel, lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1, delta_bb1)),
         },
         "bb1_localized": {
             "oracle": (
-            sim_u_sGumbel, w_sGumbel, lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1_localized, delta_bb1_localized)),
-            "ecdf": (estim_u_sGumbel, w_sGumbel,
+            total_oracle_u_sGumbel, w_sGumbel, lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1_localized, delta_bb1_localized)),
+            "ecdf": (total_ecdf_u_sGumbel, w_sGumbel,
                      lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1_localized, delta_bb1_localized)),
         },
         "bb1_local": {
             "oracle": (
-            sim_u_sGumbel, w_sGumbel, lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1_local, delta_bb1_local)),
+            total_oracle_u_sGumbel, w_sGumbel, lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1_local, delta_bb1_local)),
             "ecdf": (
-            estim_u_sGumbel, w_sGumbel, lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1_local, delta_bb1_local)),
+            total_ecdf_u_sGumbel, w_sGumbel, lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1_local, delta_bb1_local)),
         },
         "f_for_KL_matching": {
-            "oracle": (sim_u_sGumbel, w_sGumbel, lambda u: student_t_copula_pdf_from_PITs(u, f_rho, df)),
-            "ecdf": (estim_u_sGumbel, w_sGumbel, lambda u: student_t_copula_pdf_from_PITs(u, f_rho, df)),
+            "oracle": (total_oracle_u_sGumbel, w_sGumbel, lambda u: student_t_copula_pdf_from_PITs(u, f_rho, df)),
+            "ecdf": (total_ecdf_u_sGumbel, w_sGumbel, lambda u: student_t_copula_pdf_from_PITs(u, f_rho, df)),
         },
         "sGumbel": {
-            "oracle": (sim_u_sGumbel, w_sGumbel, lambda u: sGumbel_copula_pdf_from_PITs(u, theta_sGumbel)),
-            "ecdf": (estim_u_sGumbel, w_sGumbel, lambda u: sGumbel_copula_pdf_from_PITs(u, theta_sGumbel)),
+            "oracle": (total_oracle_u_sGumbel, w_sGumbel, lambda u: sGumbel_copula_pdf_from_PITs(u, theta_sGumbel)),
+            "ecdf": (total_ecdf_u_sGumbel, w_sGumbel, lambda u: sGumbel_copula_pdf_from_PITs(u, theta_sGumbel)),
         },
     }
 
     score_vecs = {score: {model: {} for model in model_info} for score in score_types}
+    score_sums = {score: {model: {} for model in model_info} for score in score_types}
 
     for model, pits in model_info.items():
         for pit, (u_dat, w_dat, pdf_func) in pits.items():
             log_v, cs_v, cls_v = score_vectors(u_dat, w_dat, pdf_func)
-            score_vecs["LogS"][model][pit] = log_v
-            score_vecs["CS"][model][pit] = cs_v
-            score_vecs["CLS"][model][pit] = cls_v
+            for name, vec in zip(["LogS", "CS", "CLS"], [log_v, cs_v, cls_v]):
+                score_vecs[name][model][pit] = vec
+                score_sums[name][model][pit] = float(np.sum(vec))
 
-    results = {}
-
-    for score in score_types:
-        for model in model_info:
-            for pit in pit_types:
-                vec = score_vecs[score][model][pit]
-                results[f"{score}_{model}_{pit}"] = np.sum(vec)
-                results[f"{score}_vec_{model}_{pit}"] = vec
-
-    # Pairwise difference vectors
     model_pairs = list(combinations(copula_models_for_plots, 2))
+    diff_vecs = {score: {pit: {} for pit in pit_types} for score in score_types}
     for model_a, model_b in model_pairs:
         for pit in pit_types:
             for score in score_types:
                 vec_a = score_vecs[score][model_a][pit]
                 vec_b = score_vecs[score][model_b][pit]
-                results[f"{score}_diff_vec_{pit}_{model_a}_{model_b}"] = vec_a - vec_b
+                diff_vecs[score][pit][DiffKey(pit, model_a, model_b)] = vec_a - vec_b
 
-    return results
+    return {
+        "sums": score_sums,
+        "vecs": score_vecs,
+        "diff_vecs": diff_vecs,
+    }
 
 if __name__ == '__main__':
 
@@ -277,85 +292,79 @@ if __name__ == '__main__':
     for score in score_types:
         for model in all_copula_models:
             for pit in pit_types:
-                key = f"{score}_{model}_{pit}"
-                if key in results[0]:  # only include if key exists in result
-                    print(f"Populating vecs[{score}][{model}][{pit}]")
-                    vecs[score][model][pit] = np.array([res.get(key, np.nan) for res in results])
-                else:
-                    print(f"Missing key: {key}")
+                try:
+                    vecs[score][model][pit] = np.array([
+                        res["sums"][score][model][pit] for res in results
+                    ])
+                except KeyError:
+                    print(f"Key error for {score}: {model}, {pit}")
 
     # Get all pairwise model combinations (excluding self-pairs)
     model_pairs = list(combinations(copula_models_for_plots, 2))  # [('f', 'g'), ('f', 'p'), ..., ('bb1', 'f_for_KL_matching')]
 
     print(model_pairs)
 
-    diffs = {}
-    diff_mats = {}
+    diffs = {score: {} for score in score_types}
+    diff_mats = {score: {} for score in score_types}
 
     for pit in pit_types:
         for score in score_types:
             for model_a, model_b in model_pairs:
+                key = DiffKey(pit, model_a, model_b)
                 try:
                     vec_a = vecs[score][model_a][pit]
                     vec_b = vecs[score][model_b][pit]
                 except KeyError:
                     continue  # Skip if data missing for a model/pit combination
-
-                suffix = f"{pit}_{model_a}_{model_b}"  # e.g., oracle_f_g
-                diffs[f"{score}_diffs_{suffix}"] = vec_a - vec_b
-                diff_mats[f"{score}_diffs_{suffix}"] = np.vstack([
-                    res[f"{score}_diff_vec_{suffix}"] for res in results
+                diffs[score][key] = vec_a - vec_b
+                diff_mats[score][key] = np.vstack([
+                    res["diff_vecs"][score][pit][key] for res in results
                 ])
 
-    for key in diffs:
-        print(f"{key}")
+    for score, score_dict in diffs.items():
+        for key in score_dict:
+            print(f"{score}: {key}")
 
-    tag_suffixes = list(diffs.keys())  # All keys are now "{score}_diffs_{pit}_{model_a}_{model_b}"
-
-    # Extract suffix from each full key
-    suffixes = list({extract_suffix_from_key(key, score_types) for key in diffs})
-
-    # Optional: for plotting labels
-    pair_names = make_pair_labels(suffixes)
+    diff_keys = sorted({k for d in diffs.values() for k in d})
+    pair_names = {k: k.label for k in diff_keys}
 
     # === Size tests ===
-    p_values = {k: t_test_per_replication(mat) for k, mat in diff_mats.items()}
-    size_curves = {k: perform_size_tests(v) for k, v in p_values.items()}
+    p_values = {
+        score: {k: t_test_per_replication(mat) for k, mat in mats.items()} for score, mats in diff_mats.items()
+    }
+    size_curves = {
+        score: {k: perform_size_tests(v) for k, v in pv.items()} for score, pv in p_values.items()
+    }
 
-    # Restrict plots to the configured pairs.  "pair_to_suffixes" maps a label
-    # (e.g. "f - g") to the corresponding oracle/ecdf suffixes produced above.
-    target_suffixes = [s for pair in pair_to_suffixes_size.values() for s in pair]
+    target_keys = [k for pair in pair_to_keys_size.values() for k in pair]
     pair_labels_subset = {
-        suf: f"{label} ({'oracle' if 'oracle' in suf else 'ecdf'})"
-        for label, (oracle_suf, ecdf_suf) in pair_to_suffixes_size.items()
+        key: f"{label} ({key.pit})"
+        for label, (oracle_suf, ecdf_suf) in pair_to_keys_size.items()
         for suf in (oracle_suf, ecdf_suf)
     }
 
     for score in score_types:
         subset = {
-            suf: size_curves[f"{score}_diffs_{suf}"]
-            for suf in target_suffixes
-            if f"{score}_diffs_{suf}" in size_curves
+            key: size_curves[score][key]
+            for key in target_keys
+            if key in size_curves[score]
         }
         plot_size_curves(subset, pair_labels_subset, plot_type="discrepancy", title=f"{score} Size Discrepancy")
         plot_size_curves(subset, pair_labels_subset, plot_type="rejection", title=f"{score} Rejection Rates")
 
     # For plotting divide CS and CLS by std dev
-    diffs = {k: div_by_stdev(k, v) for k, v in diffs.items()}
+    for score in score_types:
+        for key in list(diffs[score].keys()):
+            diffs[score][key] = div_by_stdev(str(key), diffs[score][key])
 
     # Create score dictionaries for plotting
-    score_dicts = make_score_dicts(diffs, suffixes, score_types)
+    score_dicts = make_score_dicts(diffs, diff_keys, score_types)
 
-    print("Available suffixes:", list(score_dicts.keys()))
-
-    # validate_plot_data(score_dicts, pair_names, score_types, pair_label=["bb1 - f_for_KL_matching",
-    #                                                                      "bb1_localized - f_for_KL_matching",
-    #                                                                      "bb1_local - f_for_KL_matching",
-    #                                                                      "f - g", "f - p", "g - p"])
+    print("Available keys:", [str(k) for k in score_dicts.keys()])
 
     # --- Plots for score differences ---
-    plot_score_differences(score_dicts, score_types, pair_to_suffixes)
+    plot_score_differences(score_dicts, score_types, pair_to_keys)
 
-    plot_aligned_kl_matched_scores(score_dicts, score_score_suffixes)
+    plot_aligned_kl_matched_scores(score_dicts, score_score_keys)
 
-    plot_aligned_kl_matched_scores_cdf(score_dicts, score_score_suffixes)
+    plot_aligned_kl_matched_scores_cdf(score_dicts, score_score_keys)

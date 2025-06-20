@@ -89,6 +89,8 @@ Size discrepancy plots:
     De 95% point-wise significance intervals moeten worden laten zien ook.
     Vraag chat ipv alleen codex
     Zoek uit wat te doen met de rolling window??? kutzooi
+    What does score_vectors do in simulate_one_rep
+        maybe changing this broke the point-wise score calc
 
 
 

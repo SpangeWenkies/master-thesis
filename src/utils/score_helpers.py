@@ -1,4 +1,6 @@
 import numpy as np
+from typing import Iterable, Dict
+from .structure_defs import DiffKey
 
 def div_by_stdev(name, vec):
     """Standardize a vector by its standard deviation."""
@@ -13,61 +15,16 @@ def div_by_stdev(name, vec):
 
     return vec / std
 
-def extract_suffix_from_key(key, score_names):
-    """
-    Extracts the suffix (e.g. 'ecdf_f_g') from a key like 'CLS_diffs_ecdf_f_g'
-    """
-    for score in score_names:
-        prefix = f"{score}_diffs_"
-        if key.startswith(prefix):
-            return key[len(prefix):]
-    raise ValueError(f"Key '{key}' does not start with a known score prefix.")
-
-def make_score_dicts(diffs, tag_suffixes, score_names):
-    """
-    Organize flattened diff dictionary into nested dict: {suffix: {score: array}}
-
-    Parameters:
-        diffs: dict like {"LogS_diffs_ecdf_f_g": array, ...}
-        tag_suffixes: list of suffixes to include (e.g. ['ecdf_f_g', 'oracle_f_g'])
-        score_names: list of score types (e.g. ['LogS', 'CS', 'CLS'])
-
-    Returns:
-        dict of form {suffix: {score: array}}
-    """
-    score_dicts = {}
-    for suffix in tag_suffixes:
-        score_dicts[suffix] = {
-            score: diffs[f"{score}_diffs_{suffix}"]
+def make_score_dicts(diffs: dict, keys: Iterable[DiffKey], score_names: Iterable[str]) -> Dict[DiffKey, Dict[str, np.ndarray]]:
+    """Organize difference vectors into nested dictionaries"""
+    score_dicts: Dict[DiffKey, Dict[str, np.ndarray]] = {}
+    for key in keys:
+        score_dicts[key] = {
+            score: diffs[score][key]
             for score in score_names
+            if key in diffs[score]
         }
     return score_dicts
-
-def make_pair_labels(suffixes):
-    """
-    Converts suffixes like 'oracle_bb1_localized_f_for_KL_matching' to 'bb1_localized - f_for_KL_matching' labels.
-
-    Parameters:
-        suffixes: list of string suffixes (e.g. ['oracle_bb1_localized_f_for_KL_matching'])
-
-    Returns:
-        dict mapping each suffix to a pair label (e.g. {'oracle_bb1_localized_f_for_KL_matching': 'bb1_localized - f_for_KL_matching'})
-    """
-    pair_labels = {}
-    for suffix in suffixes:
-        parts = suffix.split("_")
-        pit = parts[0]
-        model_a = parts[1]
-        # Join the remaining parts, then split the last underscore group into model_b
-        model_and_target = "_".join(parts[2:])
-        if "_" in model_and_target:
-            split_pos = model_and_target.rfind("_")
-            model_b = model_and_target[split_pos+1:]
-            model_a = model_and_target[:split_pos]
-        else:
-            model_b = model_and_target
-        pair_labels[suffix] = f"{model_a} - {model_b}"
-    return pair_labels
 
 def t_test_per_replication(diff_matrix):
     """Return p-values from t-tests applied row-wise.

@@ -157,23 +157,23 @@ def validate_plot_data(score_dicts, pair_names, score_names, pair_label=None):
     issues_found = False
 
     for label in sorted(set(selected_pairs.values())):
-        suffix_group = [s for s, l in selected_pairs.items() if l == label]
-        oracle_suffix = next((s for s in suffix_group if "oracle" in s), None)
-        ecdf_suffix = next((s for s in suffix_group if "ecdf" in s), None)
+        key_group = [k for k, l in selected_pairs.items() if l == label]
+        oracle_key = next((k for k in key_group if getattr(k, "pit", "")=="oracle"), None)
+        ecdf_key = next((k for k in key_group if getattr(k, "pit", "")=="ecdf"), None)
 
-        if not oracle_suffix or not ecdf_suffix:
-            print(f"Missing oracle or ecdf suffix for pair: {label}")
+        if not oracle_key or not ecdf_key:
+            print(f"Missing oracle or ecdf key for pair: {label}")
             issues_found = True
             continue
 
-        if oracle_suffix not in score_dicts or ecdf_suffix not in score_dicts:
-            print(f"Missing score_dict entries for: {oracle_suffix}, {ecdf_suffix}")
+        if oracle_key not in score_dicts or ecdf_key not in score_dicts:
+            print(f"Missing score_dict entries for: {oracle_key}, {ecdf_key}")
             issues_found = True
             continue
 
         for score in score_names:
-            data_o = score_dicts[oracle_suffix].get(score, None)
-            data_e = score_dicts[ecdf_suffix].get(score, None)
+            data_o = score_dicts[oracle_key].get(score, None)
+            data_e = score_dicts[ecdf_key].get(score, None)
 
             if data_o is None or data_e is None:
                 print(f"Missing score '{score}' for pair {label}")
@@ -186,26 +186,26 @@ def validate_plot_data(score_dicts, pair_names, score_names, pair_label=None):
                 issues_found = True
 
     if not issues_found:
-        print("✅ All selected pairs are valid for plotting.")
+        print("All selected pairs are valid for plotting.")
 
-def plot_score_differences(score_dicts, score_names, pair_to_suffixes):
+def plot_score_differences(score_dicts, score_names, pair_to_keys):
     """
-    Plot histograms and KDEs of score differences using explicitly passed suffixes per pair.
+    Plot histograms and KDEs of score differences using explicitly passed keys per pair.
 
     Parameters:
-    - score_dicts: dict of {suffix: {score_name: array}}
+    - score_dicts: dict of {DiffKey: {score_name: array}}
     - score_names: list of score names
-    - pair_to_suffixes: dict mapping plot label (e.g. "f - g") -> (oracle_suffix, ecdf_suffix)
+    - pair_to_keys: dict mapping plot label (e.g. "f - g") -> (oracle_key, ecdf_key)
     """
-    for label, (oracle_suffix, ecdf_suffix) in pair_to_suffixes.items():
-        if oracle_suffix not in score_dicts or ecdf_suffix not in score_dicts:
+    for label, (oracle_key, ecdf_key) in pair_to_keys.items():
+        if oracle_key not in score_dicts or ecdf_key not in score_dicts:
             print(f"Skipping {label} — missing: "
-                  f"{'oracle' if oracle_suffix not in score_dicts else ''} "
-                  f"{'ecdf' if ecdf_suffix not in score_dicts else ''}")
+                  f"{'oracle' if oracle_key not in score_dicts else ''} "
+                  f"{'ecdf' if ecdf_key not in score_dicts else ''}")
             continue
 
-        oracle_scores = score_dicts[oracle_suffix]
-        ecdf_scores = score_dicts[ecdf_suffix]
+        oracle_scores = score_dicts[oracle_key]
+        ecdf_scores = score_dicts[ecdf_key]
 
         num_scores = len(score_names)
         fig, axes = plt.subplots(1, num_scores, figsize=(6 * num_scores, 5), sharey=True)
@@ -238,30 +238,30 @@ def plot_score_differences(score_dicts, score_names, pair_to_suffixes):
         plt.tight_layout(rect=[0, 0, 1, 0.95])
         plt.show()
 
-def plot_score_differences_cdf(score_dicts, score_names, pair_to_suffixes):
+def plot_score_differences_cdf(score_dicts, score_names, pair_to_keys):
     """
     Plot empirical CDFs of score differences using explicitly passed suffixes per pair.
 
     Parameters
     ----------
     score_dicts : dict
-        Dictionary mapping suffix -> {score_name: array}.
+        Dictionary mapping DiffKey -> {score_name: array}.
     score_names : list
         List of score names to plot.
-    pair_to_suffixes : dict
-        Mapping plot label (e.g. "f - g") -> (oracle_suffix, ecdf_suffix).
+    pair_to_keys : dict
+        Mapping plot label (e.g. "f - g") -> (oracle_key, ecdf_key).
     """
-    for label, (oracle_suffix, ecdf_suffix) in pair_to_suffixes.items():
-        if oracle_suffix not in score_dicts or ecdf_suffix not in score_dicts:
+    for label, (oracle_key, ecdf_key) in pair_to_keys.items():
+        if oracle_key not in score_dicts or ecdf_key not in score_dicts:
             print(
                 f"Skipping {label} — missing: "
-                f"{'oracle' if oracle_suffix not in score_dicts else ''} "
-                f"{'ecdf' if ecdf_suffix not in score_dicts else ''}"
+                f"{'oracle' if oracle_key not in score_dicts else ''} "
+                f"{'ecdf' if ecdf_key not in score_dicts else ''}"
             )
             continue
 
-        oracle_scores = score_dicts[oracle_suffix]
-        ecdf_scores = score_dicts[ecdf_suffix]
+        oracle_scores = score_dicts[oracle_key]
+        ecdf_scores = score_dicts[ecdf_key]
 
         num_scores = len(score_names)
         fig, axes = plt.subplots(1, num_scores, figsize=(6 * num_scores, 5), sharey=True)
@@ -288,15 +288,15 @@ def plot_score_differences_cdf(score_dicts, score_names, pair_to_suffixes):
         plt.tight_layout(rect=[0, 0, 1, 0.95])
         plt.show()
 
-def plot_aligned_kl_matched_scores(score_dicts, score_score_suffixes):
+def plot_aligned_kl_matched_scores(score_dicts, score_score_keys):
     """
     Plots three score difference histograms/KDEs aligned horizontally.
 
     Parameters:
-    - score_dicts: dict of {suffix: {score_name: np.ndarray}}, as constructed from your diffs.
-    - score_score_suffixes: list of tuples:
+    - score_dicts: dict of {DiffKey: {score_name: np.ndarray}}, as constructed from your diffs.
+    - score_score_keys: list of tuples:
         [
-            (score_name, label, oracle_suffix, ecdf_suffix),
+            (score_name, label, oracle_key, ecdf_key),
             ...
         ]
       For example:
@@ -306,21 +306,21 @@ def plot_aligned_kl_matched_scores(score_dicts, score_score_suffixes):
             ("CLS", "bb1_local - f_for_KL_matching", "oracle_bb1_local_f_for_KL_matching", "ecdf_bb1_local_f_for_KL_matching"),
         ]
     """
-    num_scores = len(score_score_suffixes)
+    num_scores = len(score_score_keys)
     fig, axes = plt.subplots(1, num_scores, figsize=(6 * num_scores, 5), sharey=True)
 
     if num_scores == 1:
         axes = [axes]
 
-    for ax, (score, label, oracle_suffix, ecdf_suffix) in zip(axes, score_score_suffixes):
-        if oracle_suffix not in score_dicts or ecdf_suffix not in score_dicts:
+    for ax, (score, label, oracle_key, ecdf_key) in zip(axes, score_score_keys):
+        if oracle_key not in score_dicts or ecdf_key not in score_dicts:
             print(f" Skipping {label} — missing: "
-                  f"{'oracle' if oracle_suffix not in score_dicts else ''} "
-                  f"{'ecdf' if ecdf_suffix not in score_dicts else ''}")
+                  f"{'oracle' if oracle_key not in score_dicts else ''} "
+                  f"{'ecdf' if ecdf_key not in score_dicts else ''}")
             continue
 
-        oracle_data = score_dicts[oracle_suffix][score]
-        ecdf_data = score_dicts[ecdf_suffix][score]
+        oracle_data = score_dicts[oracle_key][score]
+        ecdf_data = score_dicts[ecdf_key][score]
 
         kde_oracle = gaussian_kde(oracle_data)
         kde_ecdf = gaussian_kde(ecdf_data)
@@ -344,34 +344,34 @@ def plot_aligned_kl_matched_scores(score_dicts, score_score_suffixes):
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     plt.show()
 
-def plot_aligned_kl_matched_scores_cdf(score_dicts, score_score_suffixes):
+def plot_aligned_kl_matched_scores_cdf(score_dicts, score_score_keys):
     """
     Plot three score difference CDFs aligned horizontally.
 
     Parameters
     ----------
     score_dicts : dict
-        Mapping suffix -> {score_name: np.ndarray}.
-    score_score_suffixes : list of tuples
-        [(score_name, label, oracle_suffix, ecdf_suffix), ...]
+        Mapping DiffKey -> {score_name: np.ndarray}.
+    score_score_keys : list of tuples
+        [(score_name, label, oracle_key, ecdf_key), ...]
     """
-    num_scores = len(score_score_suffixes)
+    num_scores = len(score_score_keys)
     fig, axes = plt.subplots(1, num_scores, figsize=(6 * num_scores, 5), sharey=True)
 
     if num_scores == 1:
         axes = [axes]
 
-    for ax, (score, label, oracle_suffix, ecdf_suffix) in zip(axes, score_score_suffixes):
-        if oracle_suffix not in score_dicts or ecdf_suffix not in score_dicts:
+    for ax, (score, label, oracle_key, ecdf_key) in zip(axes, score_score_keys):
+        if oracle_key not in score_dicts or ecdf_key not in score_dicts:
             print(
                 f" Skipping {label} — missing: "
-                f"{'oracle' if oracle_suffix not in score_dicts else ''} "
-                f"{'ecdf' if ecdf_suffix not in score_dicts else ''}"
+                f"{'oracle' if oracle_key not in score_dicts else ''} "
+                f"{'ecdf' if ecdf_key not in score_dicts else ''}"
             )
             continue
 
-        oracle_data = np.sort(score_dicts[oracle_suffix][score])
-        ecdf_data = np.sort(score_dicts[ecdf_suffix][score])
+        oracle_data = np.sort(score_dicts[oracle_key][score])
+        ecdf_data = np.sort(score_dicts[ecdf_key][score])
 
         cdf_oracle = np.arange(1, len(oracle_data) + 1) / len(oracle_data)
         cdf_ecdf = np.arange(1, len(ecdf_data) + 1) / len(ecdf_data)
@@ -419,9 +419,9 @@ def plot_size_curves(size_curve_dict, pair_labels, plot_type="discrepancy", titl
     Parameters
     ----------
     size_curve_dict : dict
-        Mapping suffix -> (alpha_grid, rejection_rates, discrepancies).
+        Mapping DiffKey -> (alpha_grid, rejection_rates, discrepancies).
     pair_labels : dict
-        Mapping suffix -> human readable pair label.
+        Mapping DiffKey -> human-readable pair label.
     plot_type : {"discrepancy", "rejection"}
         Select y-axis content.
     title : str, optional
@@ -433,8 +433,8 @@ def plot_size_curves(size_curve_dict, pair_labels, plot_type="discrepancy", titl
 
     fig, ax = plt.subplots(figsize=(6, 4))
 
-    for suffix, (alpha_grid, rejection_rates, discrepancies) in size_curve_dict.items():
-        label = pair_labels.get(suffix, suffix)
+    for key, (alpha_grid, rejection_rates, discrepancies) in size_curve_dict.items():
+        label = pair_labels.get(key, key)
         y = discrepancies if plot_type == "discrepancy" else rejection_rates
         ax.plot(alpha_grid, y, marker="o", label=label)
 

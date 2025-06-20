@@ -1180,17 +1180,17 @@ def perform_size_test(differences, alpha=0.05):
     t_stat, p_val = ttest_1samp(differences, popmean=0)
     return {"reject": p_val < alpha, "t_stat": t_stat, "p_value": p_val}
 
-def perform_size_tests(score_dicts, score_names, pair_to_suffixes, alpha=0.05):
+def perform_size_tests(score_dicts, score_names, pair_to_keys, alpha=0.05):
     """Compute size test results for multiple score differences.
 
     Parameters
     ----------
     score_dicts : dict
-        Mapping ``suffix -> {score: array}`` as produced by ``make_score_dicts``.
+        Mapping ``DiffKey -> {score: array}`` as produced by ``make_score_dicts``.
     score_names : list
         List of score names to evaluate.
-    pair_to_suffixes : dict
-        Mapping plot label -> (oracle_suffix, ecdf_suffix).
+    pair_to_keys : dict
+        Mapping plot label -> (oracle_key, ecdf_key).
     alpha : float, optional
         Significance level for the tests.
 
@@ -1201,13 +1201,13 @@ def perform_size_tests(score_dicts, score_names, pair_to_suffixes, alpha=0.05):
         ``result`` is the output of :func:`perform_size_test`.
     """
     results = {}
-    for label, (oracle_suffix, ecdf_suffix) in pair_to_suffixes.items():
-        if oracle_suffix not in score_dicts or ecdf_suffix not in score_dicts:
+    for label, (oracle_key, ecdf_key) in pair_to_keys.items():
+        if oracle_key not in score_dicts or ecdf_key not in score_dicts:
             continue
         res_pair = {}
         for score in score_names:
-            diff_oracle = score_dicts[oracle_suffix][score]
-            diff_ecdf = score_dicts[ecdf_suffix][score]
+            diff_oracle = score_dicts[oracle_key][score]
+            diff_ecdf = score_dicts[ecdf_key][score]
             res_pair[score] = {
                 "oracle": perform_size_test(diff_oracle, alpha),
                 "ecdf": perform_size_test(diff_ecdf, alpha),
