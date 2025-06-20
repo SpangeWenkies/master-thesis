@@ -14,18 +14,24 @@ from tqdm import tqdm
 import scipy.optimize as opt
 from concurrent.futures import ProcessPoolExecutor
 
-def region_weight_function_for_kl_match(u, q_threshold, df):
-    """
-    Computes binary weight mask in PIT space based on Y1 + Y2 ≤ q.
+def sample_region_mask(u, q_threshold, df):
+    """Return a 1D indicator mask for PIT observations within a region.
 
-    Inputs:
-        n : sample size
-        u : (n, 2) array of PITs
-        q_threshold : float, quantile threshold (e.g. 5% sum cutoff)
-        df : degrees of freedom of Student-t marginals
+    Parameters
+    ----------
+    u : ndarray, shape (n, 2)
+        PIT pairs.
+    q_threshold : float
+        Quantile threshold defining the region (e.g. ``0.05`` for the lower 5%).
+    df : int or float
+        Degrees of freedom of the Student--t marginals.
 
-    Returns:
-        (n,) binary array: 1 if y1 + y2 ≤ q_threshold, else 0
+    Returns
+    -------
+    numpy.ndarray, shape (n,)
+        Binary array equal to ``1`` when ``y1 + y2`` is below the empirical
+        ``q_threshold`` and ``0`` otherwise.  This mask is suitable for scoring
+        rules that apply one weight per observation.
     """
 
     y1 = student_t.ppf(u[:, 0], df)
@@ -35,18 +41,26 @@ def region_weight_function_for_kl_match(u, q_threshold, df):
 
     return ((y1 + y2) <= q_true).astype(int)
 
-def region_weight_function(n, u, q_threshold, df):
-    """
-    Computes binary weight mask in PIT space based on Y1 + Y2 ≤ q.
+def grid_region_mask(n, u, q_threshold, df):
+    """Return a 2D indicator mask over a PIT grid for region-based weighting.
 
-    Inputs:
-        n : (R+P) sample size
-        u : (n, 2) array of PITs
-        q_threshold : float, quantile threshold (e.g. 5% sum cutoff)
-        df : degrees of freedom of Student-t marginals
+    Parameters
+    ----------
+    n : int
+        Grid size (number of points per dimension).
+    u : ndarray, shape (n, 2)
+        PIT pairs used to determine the empirical quantile.
+    q_threshold : float
+        Quantile threshold for the region.
+    df : int or float
+        Degrees of freedom of the Student--t marginals.
 
-    Returns:
-        (?,?) binary array: 1 if y1 + y2 ≤ q_threshold, else 0
+    Returns
+    -------
+    numpy.ndarray, shape (n, n)
+        Binary grid mask equal to ``1`` inside the region defined by ``y1 + y2``
+        below the ``q_threshold``.  This is mainly used for density evaluations
+        on a regular grid.
     """
 
     u_seq = np.linspace(0.005, 0.995, n)
@@ -155,7 +169,8 @@ def CS_sGumbel(u, theta, w):
                         An (n, 2) array of PITs, each in (0,1)
             theta :   dependence parameter (>=1)
                         theta = 1 give the independence copula
-            w :     (n,) array of weights (binary or smooth)
+            w :     (n,) array of weights (binary or smooth), typically produced
+                    by :func:`sample_region_mask`
 
     Return value:
         w * log_mF + (1 - w) * log_Fw_bar  weighted log of mF * w plus inverse weighted log of Fw_bar
@@ -187,7 +202,8 @@ def CLS_sGumbel(u, theta, w):
                         An (n, 2) array of PITs, each in (0,1)
             theta :   dependence parameter (>=1)
                         theta = 1 give the independence copula
-            w :     (n,) array of weights (binary or smooth)
+            w :     (n,) array of weights (binary or smooth), typically produced
+                    by :func:`sample_region_mask`
 
     Return value:
         ...
@@ -476,7 +492,8 @@ def CS_bb1(u, theta, delta, w):
                         An (n, 2) array of PITs, each in (0,1)
             theta :   dependence parameter (>0)
             delta :    tail asymmetry parameter (>=1)
-            w :     (n,) array of weights (binary or smooth)
+            w :     (n,) array of weights (binary or smooth), typically produced
+                    by :func:`sample_region_mask`
 
     Return value:
         w * log_mF + (1 - w) * log_Fw_bar  weighted log of mF * w plus inverse weighted log of Fw_bar
@@ -506,7 +523,8 @@ def CLS_bb1(u, theta, delta, w):
                         An (n, 2) array of PITs, each in (0,1)
             theta :   dependence parameter (>0)
             delta :    tail asymmetry parameter (>=1)
-            w :     (n,) array of weights (binary or smooth)
+            w :     (n,) array of weights (binary or smooth), typically produced
+                    by :func:`sample_region_mask`
 
     Return value:
         ...
@@ -561,7 +579,8 @@ def CS_student_t_copula(u, rho, df, w):
                         An (n, 2) array of PITs, each in (0,1)
             rho :   Correlation parameter [-1,1]
             df :    degrees of freedom t distribution
-            w :     (n,) array of weights (binary or smooth)
+            w :     (n,) array of weights (binary or smooth), typically produced
+                    by :func:`sample_region_mask`
 
     Return value:
         w * log_mF + (1 - w) * log_Fw_bar  weighted log of mF * w plus inverse weighted log of Fw_bar
@@ -591,7 +610,8 @@ def CLS_student_t_copula(u, rho, df, w):
                         An (n, 2) array of PITs, each in (0,1)
             rho :   Correlation parameter [-1,1]
             df :    degrees of freedom t distribution
-            w :     (n,) array of weights (binary or smooth)
+            w :     (n,) array of weights (binary or smooth), typically produced
+                    by :func:`sample_region_mask`
 
     Return value:
         ...
