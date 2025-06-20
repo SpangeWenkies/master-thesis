@@ -6,6 +6,7 @@ import numpy as np
 from scipy.stats import rankdata, t as student_t, multivariate_t
 import rpy2.robjects as ro
 from rpy2.robjects import numpy2ri
+from collections.abc import Callable
 
 
 def sample_region_mask(u: np.ndarray, q_threshold: float, df: float | int) -> np.ndarray:
@@ -20,6 +21,13 @@ def sample_region_mask(u: np.ndarray, q_threshold: float, df: float | int) -> np
     df : int | float
         Degrees of freedom of the Student-t marginals.
     """
+    if u.ndim != 2 or u.shape[1] != 2:
+        raise ValueError("u must be of shape (n, 2)")
+    if not 0 < q_threshold < 1:
+        raise ValueError("q_threshold must be in (0, 1)")
+    if df <= 0:
+        raise ValueError("df must be positive")
+
     y1 = student_t.ppf(u[:, 0], df)
     y2 = student_t.ppf(u[:, 1], df)
     q_true = np.quantile(y1 + y2, q_threshold)
@@ -28,6 +36,15 @@ def sample_region_mask(u: np.ndarray, q_threshold: float, df: float | int) -> np
 
 def grid_region_mask(n: int, u: np.ndarray, q_threshold: float, df: float | int) -> np.ndarray:
     """Return a grid based region mask for copula scores."""
+    if n <= 0:
+        raise ValueError("n must be positive")
+    if u.ndim != 2 or u.shape[1] != 2:
+        raise ValueError("u must be of shape (n, 2)")
+    if not 0 < q_threshold < 1:
+        raise ValueError("q_threshold must be in (0, 1)")
+    if df <= 0:
+        raise ValueError("df must be positive")
+
     u_seq = np.linspace(0.005, 0.995, n)
     U1, U2 = np.meshgrid(u_seq, u_seq)
     y1 = student_t.ppf(u[:, 0], df)
@@ -70,6 +87,12 @@ def sGumbel_copula_pdf_from_PITs(u: np.ndarray, theta: float) -> np.ndarray:
 
 def student_t_copula_pdf_from_PITs(u: np.ndarray, rho: float, df: float | int) -> np.ndarray:
     """Density of a Student-t copula evaluated at ``u``."""
+    if not -1 <= rho <= 1:
+        raise ValueError("rho must be in [-1, 1]")
+    if df <= 0:
+        raise ValueError("df must be positive")
+    if u.ndim != 2 or u.shape[1] != 2:
+        raise ValueError("u must be of shape (n, 2)")
     x = student_t.ppf(u[:, 0], df)
     y = student_t.ppf(u[:, 1], df)
     cov = np.array([[1, rho], [rho, 1]])
@@ -80,6 +103,12 @@ def student_t_copula_pdf_from_PITs(u: np.ndarray, rho: float, df: float | int) -
 
 def bb1_copula_pdf_from_PITs(u: np.ndarray, theta: float, delta: float) -> np.ndarray:
     """Density of a BB1 copula evaluated at ``u``."""
+    if theta <= 0:
+        raise ValueError("theta must be positive")
+    if delta <= 0:
+        raise ValueError("delta must be positive")
+    if u.ndim != 2 or u.shape[1] != 2:
+        raise ValueError("u must be of shape (n, 2)")
     numpy2ri.activate()
     ro.globalenv['u_data'] = u
     ro.globalenv['theta'] = theta
@@ -102,18 +131,27 @@ def ecdf_transform(Y: np.ndarray) -> np.ndarray:
     return U_hat
 
 
-def compute_ecdf_inverse(sample: np.ndarray):
+
+def compute_ecdf_inverse(sample: np.ndarray) -> Callable[[np.ndarray], np.ndarray]:
     """Return an inverse ECDF function for ``sample``."""
+    if sample.size == 0:
+        raise ValueError("sample must be non-empty")
     return lambda u: np.quantile(sample, u)
 
 
-def compute_true_t_inverse(df: float | int):
+def compute_true_t_inverse(df: float | int) -> Callable[[np.ndarray], np.ndarray]:
     """Return the inverse Student-t CDF for the given ``df``."""
+    if df <= 0:
+        raise ValueError("df must be positive")
     return lambda u: student_t.ppf(u, df)
 
 
 def simulate_independent_t_copula(n: int, df: float) -> tuple[np.ndarray, np.ndarray]:
     """Simulate PITs from an independent t copula."""
+    if n <= 0:
+        raise ValueError("n must be positive")
+    if df <= 0:
+        raise ValueError("df must be positive")
     eps1 = student_t.rvs(df, size=n)
     eps2 = student_t.rvs(df, size=n)
     u1 = student_t.cdf(eps1, df)
@@ -121,8 +159,16 @@ def simulate_independent_t_copula(n: int, df: float) -> tuple[np.ndarray, np.nda
     return u1, u2
 
 
-def create_region(U1: np.ndarray, U2: np.ndarray, F1_inv, F2_inv, q_alpha: float) -> np.ndarray:
+def create_region(
+    U1: np.ndarray,
+    U2: np.ndarray,
+    F1_inv: Callable[[np.ndarray], np.ndarray],
+    F2_inv: Callable[[np.ndarray], np.ndarray],
+    q_alpha: float,
+) -> np.ndarray:
     """Create binary mask ``F1_inv(U1)+F2_inv(U2) <= q_alpha``."""
+    if not 0 < q_alpha < 1:
+        raise ValueError("q_alpha must be in (0, 1)")
     Y1 = F1_inv(U1)
     Y2 = F2_inv(U2)
     return ((Y1 + Y2) <= q_alpha).astype(int)
@@ -130,6 +176,10 @@ def create_region(U1: np.ndarray, U2: np.ndarray, F1_inv, F2_inv, q_alpha: float
 
 def copula_pdf_student_t(U1: np.ndarray, U2: np.ndarray, rho: float, df: float | int) -> np.ndarray:
     """Compute Student-t copula PDF on a grid."""
+    if not -1 <= rho <= 1:
+        raise ValueError("rho must be in [-1, 1]")
+    if df <= 0:
+        raise ValueError("df must be positive")
     x = student_t.ppf(U1, df)
     y = student_t.ppf(U2, df)
     cov = np.array([[1, rho], [rho, 1]])
@@ -140,6 +190,10 @@ def copula_pdf_student_t(U1: np.ndarray, U2: np.ndarray, rho: float, df: float |
 
 def inverse_ecdf(u: np.ndarray, original_resid: np.ndarray) -> np.ndarray:
     """Map PIT values ``u`` back to residuals using the sample ECDF."""
+    if u.ndim != 1:
+        raise ValueError("u must be a 1D array")
+    if original_resid.size == 0:
+        raise ValueError("original_resid must be non-empty")
     sorted_resid = np.sort(original_resid)
     n = len(sorted_resid)
     indices = np.minimum((u * n).astype(int), n - 1)
