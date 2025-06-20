@@ -21,9 +21,6 @@ SCORE_FUNCS = {
                   "CLS":  CLS_bb1}
 }
 
-# Map high level model names to their scoring family.  The keys correspond to
-# the model identifiers used throughout the simulation while the values denote
-# which scoring functions should be employed.
 MODEL_FAMILY = {
     "f": "student_t",
     "g": "student_t",

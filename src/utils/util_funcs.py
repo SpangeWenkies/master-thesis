@@ -40,13 +40,13 @@ def region_weight_function(n, u, q_threshold, df):
     Computes binary weight mask in PIT space based on Y1 + Y2 ≤ q.
 
     Inputs:
-        n : sample size
+        n : (R+P) sample size
         u : (n, 2) array of PITs
         q_threshold : float, quantile threshold (e.g. 5% sum cutoff)
         df : degrees of freedom of Student-t marginals
 
     Returns:
-        (n,n) binary array: 1 if y1 + y2 ≤ q_threshold, else 0
+        (?,?) binary array: 1 if y1 + y2 ≤ q_threshold, else 0
     """
 
     u_seq = np.linspace(0.005, 0.995, n)
