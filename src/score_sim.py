@@ -81,51 +81,56 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho,
         oracle_u_sGumbel[k] = total_oracle_u_sGumbel[t - R:t]
 
 
+    # Store rolling-window PITs and model parameters
     model_info = {
         "f": {
-            "oracle": (total_oracle_u_p, w_p, lambda u: student_t_copula_pdf_from_PITs(u, f_rho, df)),
-            "ecdf": (total_ecdf_u_p, w_p, lambda u: student_t_copula_pdf_from_PITs(u, f_rho, df)),
+            "oracle": (oracle_u_p, w_p, {"rho": f_rho, "df": df}),
+            "ecdf": (ecdf_u_p, w_p, {"rho": f_rho, "df": df}),
         },
         "g": {
-            "oracle": (total_oracle_u_p, w_p, lambda u: student_t_copula_pdf_from_PITs(u, g_rho, df)),
-            "ecdf": (total_ecdf_u_p, w_p, lambda u: student_t_copula_pdf_from_PITs(u, g_rho, df)),
+            "oracle": (oracle_u_p, w_p, {"rho": g_rho, "df": df}),
+            "ecdf": (ecdf_u_p, w_p, {"rho": g_rho, "df": df}),
         },
         "p": {
-            "oracle": (total_oracle_u_p, w_p, lambda u: student_t_copula_pdf_from_PITs(u, p_rho, df)),
-            "ecdf": (total_ecdf_u_p, w_p, lambda u: student_t_copula_pdf_from_PITs(u, p_rho, df)),
+            "oracle": (oracle_u_p, w_p, {"rho": p_rho, "df": df}),
+            "ecdf": (ecdf_u_p, w_p, {"rho": p_rho, "df": df}),
         },
         "bb1": {
-            "oracle": (total_oracle_u_sGumbel, w_sGumbel, lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1, delta_bb1)),
-            "ecdf": (total_ecdf_u_sGumbel, w_sGumbel, lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1, delta_bb1)),
+            "oracle": (oracle_u_sGumbel, w_sGumbel, {"theta": theta_bb1, "delta": delta_bb1}),
+            "ecdf": (ecdf_u_sGumbel, w_sGumbel, {"theta": theta_bb1, "delta": delta_bb1}),
         },
         "bb1_localized": {
-            "oracle": (
-            total_oracle_u_sGumbel, w_sGumbel, lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1_localized, delta_bb1_localized)),
-            "ecdf": (total_ecdf_u_sGumbel, w_sGumbel,
-                     lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1_localized, delta_bb1_localized)),
+            "oracle": (oracle_u_sGumbel, w_sGumbel, {"theta": theta_bb1_localized, "delta": delta_bb1_localized}),
+            "ecdf": (ecdf_u_sGumbel, w_sGumbel, {"theta": theta_bb1_localized, "delta": delta_bb1_localized}),
         },
         "bb1_local": {
-            "oracle": (
-            total_oracle_u_sGumbel, w_sGumbel, lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1_local, delta_bb1_local)),
-            "ecdf": (
-            total_ecdf_u_sGumbel, w_sGumbel, lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1_local, delta_bb1_local)),
+            "oracle": (oracle_u_sGumbel, w_sGumbel, {"theta": theta_bb1_local, "delta": delta_bb1_local}),
+            "ecdf": (ecdf_u_sGumbel, w_sGumbel, {"theta": theta_bb1_local, "delta": delta_bb1_local}),
         },
         "f_for_KL_matching": {
-            "oracle": (total_oracle_u_sGumbel, w_sGumbel, lambda u: student_t_copula_pdf_from_PITs(u, f_rho, df)),
-            "ecdf": (total_ecdf_u_sGumbel, w_sGumbel, lambda u: student_t_copula_pdf_from_PITs(u, f_rho, df)),
+            "oracle": (oracle_u_sGumbel, w_sGumbel, {"rho": f_rho, "df": df}),
+            "ecdf": (ecdf_u_sGumbel, w_sGumbel, {"rho": f_rho, "df": df}),
         },
         "sGumbel": {
-            "oracle": (total_oracle_u_sGumbel, w_sGumbel, lambda u: sGumbel_copula_pdf_from_PITs(u, theta_sGumbel)),
-            "ecdf": (total_ecdf_u_sGumbel, w_sGumbel, lambda u: sGumbel_copula_pdf_from_PITs(u, theta_sGumbel)),
+            "oracle": (oracle_u_sGumbel, w_sGumbel, {"theta": theta_sGumbel}),
+            "ecdf": (ecdf_u_sGumbel, w_sGumbel, {"theta": theta_sGumbel}),
         },
     }
 
     score_vecs = {score: {model: {} for model in model_info} for score in score_types}
     score_sums = {score: {model: {} for model in model_info} for score in score_types}
 
+    # Evaluate scores for each rolling window
     for model, pits in model_info.items():
-        for pit, (u_dat, w_dat, pdf_func) in pits.items():
-            log_v, cs_v, cls_v = score_vectors(u_dat, w_dat, pdf_func)
+        for pit, (u_dat, w_dat, params) in pits.items():
+            log_v = np.empty(P)
+            cs_v = np.empty(P)
+            cls_v = np.empty(P)
+            for k in range(P):
+                window_u = u_dat[k]
+                log_v[k] = score_vectors(window_u, model, "LogS", **params)
+                cs_v[k] = score_vectors(window_u, model, "CS", w=w_dat, **params)
+                cls_v[k] = score_vectors(window_u, model, "CLS", w=w_dat, **params)
             for name, vec in zip(["LogS", "CS", "CLS"], [log_v, cs_v, cls_v]):
                 score_vecs[name][model][pit] = vec
                 score_sums[name][model][pit] = float(np.sum(vec))
