@@ -10,16 +10,23 @@ from collections.abc import Callable
 
 
 def sample_region_mask(u: np.ndarray, q_threshold: float, df: float | int) -> np.ndarray:
-    """Return indicator mask for observations with ``y1 + y2`` below ``q_threshold``.
+    """Return an indicator for PIT pairs falling in a Student-t tail region.
 
     Parameters
     ----------
     u : ndarray of shape (n, 2)
-        PIT pairs.
+        PIT pairs ``(u_1, u_2)``.
     q_threshold : float
-        Quantile threshold for the region.
+        Quantile level used to construct the region.
     df : int | float
-        Degrees of freedom of the Student-t marginals.
+        Degrees of freedom of the Student-``t`` marginals.
+
+    Returns
+    -------
+    ndarray of shape (n,)
+        Binary mask ``1`` for observations with ``y1 + y2 <= q_true`` where
+        ``y1`` and ``y2`` are Student-``t`` quantiles and ``q_true`` is the
+        ``q_threshold`` quantile of ``y1 + y2``.
     """
     if u.ndim != 2 or u.shape[1] != 2:
         raise ValueError("u must be of shape (n, 2)")
@@ -35,7 +42,25 @@ def sample_region_mask(u: np.ndarray, q_threshold: float, df: float | int) -> np
 
 
 def grid_region_mask(n: int, u: np.ndarray, q_threshold: float, df: float | int) -> np.ndarray:
-    """Return a grid based region mask for copula scores."""
+    """Return a binary grid for evaluating copula scores on a region.
+
+    Parameters
+    ----------
+    n : int
+        Number of grid points per dimension.
+    u : ndarray of shape (m, 2)
+        PIT pairs used to determine the quantile region.
+    q_threshold : float
+        Quantile level defining the region.
+    df : int | float
+        Degrees of freedom of the Student-``t`` marginals.
+
+    Returns
+    -------
+    ndarray of shape (n, n)
+        Indicator matrix with ones inside the region defined by
+        ``F_1^{-1}(U1) + F_2^{-1}(U2) <= q_true``.
+    """
     if n <= 0:
         raise ValueError("n must be positive")
     if u.ndim != 2 or u.shape[1] != 2:
@@ -56,7 +81,20 @@ def grid_region_mask(n: int, u: np.ndarray, q_threshold: float, df: float | int)
 
 
 def sim_sGumbel_PITs(n: int, theta: float) -> np.ndarray:
-    """Simulate PITs from a survival Gumbel copula."""
+    """Simulate PIT pairs from a survival Gumbel copula.
+
+    Parameters
+    ----------
+    n : int
+        Number of observations to generate.
+    theta : float
+        Dependence parameter of the copula.
+
+    Returns
+    -------
+    ndarray of shape (n, 2)
+        Simulated PIT pairs ``(U_1, U_2)``.
+    """
     if not 1 <= theta <= 17:
         raise ValueError(f"Gumbel theta={theta:.4f} must be in [1, 17]")
     numpy2ri.activate()
@@ -71,7 +109,20 @@ def sim_sGumbel_PITs(n: int, theta: float) -> np.ndarray:
 
 
 def sGumbel_copula_pdf_from_PITs(u: np.ndarray, theta: float) -> np.ndarray:
-    """Evaluate survival Gumbel copula density at ``u``."""
+    """Evaluate the survival Gumbel copula density at PIT pairs.
+
+    Parameters
+    ----------
+    u : ndarray of shape (n, 2)
+        PIT pairs where the density is evaluated.
+    theta : float
+        Dependence parameter of the copula.
+
+    Returns
+    -------
+    ndarray of shape (n,)
+        Copula density evaluated at each row of ``u``.
+    """
     if not 1 <= theta <= 17:
         raise ValueError(f"Gumbel theta={theta:.4f} must be in [1, 17]")
     numpy2ri.activate()
@@ -86,7 +137,22 @@ def sGumbel_copula_pdf_from_PITs(u: np.ndarray, theta: float) -> np.ndarray:
 
 
 def student_t_copula_pdf_from_PITs(u: np.ndarray, rho: float, df: float | int) -> np.ndarray:
-    """Density of a Student-t copula evaluated at ``u``."""
+    """Density of a Student-t copula evaluated at PIT pairs.
+
+    Parameters
+    ----------
+    u : ndarray of shape (n, 2)
+        Locations where the density should be computed.
+    rho : float
+        Linear correlation parameter of the copula.
+    df : int | float
+        Degrees of freedom of the Student-``t`` marginals.
+
+    Returns
+    -------
+    ndarray of shape (n,)
+        Copula density evaluated at each row of ``u``.
+    """
     if not -1 <= rho <= 1:
         raise ValueError("rho must be in [-1, 1]")
     if df <= 0:
@@ -102,7 +168,22 @@ def student_t_copula_pdf_from_PITs(u: np.ndarray, rho: float, df: float | int) -
 
 
 def bb1_copula_pdf_from_PITs(u: np.ndarray, theta: float, delta: float) -> np.ndarray:
-    """Density of a BB1 copula evaluated at ``u``."""
+    """Density of a BB1 copula evaluated at PIT pairs.
+
+    Parameters
+    ----------
+    u : ndarray of shape (n, 2)
+        Locations where the density should be computed.
+    theta : float
+        First BB1 dependence parameter.
+    delta : float
+        Second BB1 dependence parameter.
+
+    Returns
+    -------
+    ndarray of shape (n,)
+        Copula density evaluated at each row of ``u``.
+    """
     if theta <= 0:
         raise ValueError("theta must be positive")
     if delta <= 0:
@@ -122,7 +203,18 @@ def bb1_copula_pdf_from_PITs(u: np.ndarray, theta: float, delta: float) -> np.nd
 
 
 def ecdf_transform(Y: np.ndarray) -> np.ndarray:
-    """Apply an ECDF transform column-wise."""
+    """Apply the empirical CDF transform to each column of ``Y``.
+
+    Parameters
+    ----------
+    Y : ndarray of shape (n, d)
+        Sample matrix to transform.
+
+    Returns
+    -------
+    ndarray of shape (n, d)
+        Column-wise empirical CDF values ``U_hat``.
+    """
     n, d = Y.shape
     U_hat = np.zeros_like(Y)
     for j in range(d):
@@ -133,21 +225,56 @@ def ecdf_transform(Y: np.ndarray) -> np.ndarray:
 
 
 def compute_ecdf_inverse(sample: np.ndarray) -> Callable[[np.ndarray], np.ndarray]:
-    """Return an inverse ECDF function for ``sample``."""
+    """Return a function that maps uniform values to quantiles of ``sample``.
+
+    Parameters
+    ----------
+    sample : ndarray of shape (n,)
+        One-dimensional sample used to construct the empirical quantile function.
+
+    Returns
+    -------
+    Callable[[ndarray], ndarray]
+        Function ``F^{-1}`` such that ``F^{-1}(u)`` has the same shape as ``u``.
+    """
     if sample.size == 0:
         raise ValueError("sample must be non-empty")
     return lambda u: np.quantile(sample, u)
 
 
 def compute_true_t_inverse(df: float | int) -> Callable[[np.ndarray], np.ndarray]:
-    """Return the inverse Student-t CDF for the given ``df``."""
+    """Return the inverse Student-``t`` CDF for a given degrees of freedom.
+
+    Parameters
+    ----------
+    df : int | float
+        Degrees of freedom of the distribution.
+
+    Returns
+    -------
+    Callable[[ndarray], ndarray]
+        Function ``F^{-1}`` that maps uniform samples to Student-``t`` quantiles.
+    """
     if df <= 0:
         raise ValueError("df must be positive")
     return lambda u: student_t.ppf(u, df)
 
 
 def simulate_independent_t_copula(n: int, df: float) -> tuple[np.ndarray, np.ndarray]:
-    """Simulate PITs from an independent t copula."""
+    """Simulate PITs from two independent Student-``t`` marginals.
+
+    Parameters
+    ----------
+    n : int
+        Number of observations to simulate.
+    df : float
+        Degrees of freedom of the marginal distributions.
+
+    Returns
+    -------
+    tuple of ndarray
+        Pair ``(u1, u2)`` each of shape ``(n,)`` containing the simulated PITs.
+    """
     if n <= 0:
         raise ValueError("n must be positive")
     if df <= 0:
@@ -166,7 +293,23 @@ def create_region(
     F2_inv: Callable[[np.ndarray], np.ndarray],
     q_alpha: float,
 ) -> np.ndarray:
-    """Create binary mask ``F1_inv(U1)+F2_inv(U2) <= q_alpha``."""
+    """Create binary mask ``F1_inv(U1)+F2_inv(U2) <= q_alpha``.
+
+    Parameters
+    ----------
+    U1, U2 : ndarray
+        Grid values where the mask should be evaluated. Both arrays must have
+        the same shape.
+    F1_inv, F2_inv : Callable[[ndarray], ndarray]
+        Quantile functions applied to ``U1`` and ``U2`` respectively.
+    q_alpha : float
+        Quantile cutoff used to define the region.
+
+    Returns
+    -------
+    ndarray
+        Binary array with the same shape as ``U1`` and ``U2``.
+    """
     if not 0 < q_alpha < 1:
         raise ValueError("q_alpha must be in (0, 1)")
     Y1 = F1_inv(U1)
@@ -175,7 +318,23 @@ def create_region(
 
 
 def copula_pdf_student_t(U1: np.ndarray, U2: np.ndarray, rho: float, df: float | int) -> np.ndarray:
-    """Compute Student-t copula PDF on a grid."""
+    """Compute the Student-``t`` copula density on a grid.
+
+    Parameters
+    ----------
+    U1, U2 : ndarray
+        Grid values where the density should be evaluated. Both arrays must have
+        the same shape.
+    rho : float
+        Linear correlation parameter.
+    df : float | int
+        Degrees of freedom of the Student-``t`` marginals.
+
+    Returns
+    -------
+    ndarray
+        Copula density evaluated at ``(U1, U2)`` with the same shape as ``U1``.
+    """
     if not -1 <= rho <= 1:
         raise ValueError("rho must be in [-1, 1]")
     if df <= 0:
@@ -189,7 +348,20 @@ def copula_pdf_student_t(U1: np.ndarray, U2: np.ndarray, rho: float, df: float |
 
 
 def inverse_ecdf(u: np.ndarray, original_resid: np.ndarray) -> np.ndarray:
-    """Map PIT values ``u`` back to residuals using the sample ECDF."""
+    """Map PIT values ``u`` back to residuals using the sample ECDF.
+
+    Parameters
+    ----------
+    u : ndarray of shape (m,)
+        PIT values to transform.
+    original_resid : ndarray of shape (n,)
+        Residual sample used to build the empirical quantile function.
+
+    Returns
+    -------
+    ndarray of shape (m,)
+        Reconstructed residuals corresponding to ``u``.
+    """
     if u.ndim != 1:
         raise ValueError("u must be a 1D array")
     if original_resid.size == 0:

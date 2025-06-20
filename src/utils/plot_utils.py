@@ -6,19 +6,22 @@ from scipy.stats import gaussian_kde
 ###########################################################
 # Plot
 
-def Plot(vX, sTitle, bLine):
-    """
-    Purpose:
-        Plot series vX
+def Plot(vX: np.ndarray, sTitle: str, bLine: bool) -> None:
+    """Plot a time series or histogram.
 
-    Inputs:
-        vX              time series
-        bLine           boolean: lineplot (1) or histogram (0)
+    Parameters
+    ----------
+    vX : ndarray of shape (n,)
+        Data to plot.
+    sTitle : str
+        Title of the figure.
+    bLine : bool
+        If ``True`` draw a line plot, otherwise draw a histogram.
 
-
-    Output:
-        Plot of realisations process
-
+    Returns
+    -------
+    None
+        The plot is shown on screen.
     """
 
     lFigureSettings = {'figsize': (10, 6), 'dpi': 70, 'titlefontsize': 16, 'axisfontsize': 14}
@@ -35,17 +38,29 @@ def Plot(vX, sTitle, bLine):
     plt.show()
 
 
-def plot_histogram_kde(data_f, data_g, data_p, title, pit_type):
+def plot_histogram_kde(
+    data_f: np.ndarray,
+    data_g: np.ndarray,
+    data_p: np.ndarray,
+    title: str,
+    pit_type: str,
+) -> None:
+    """Plot histograms and KDE overlays for three distributions.
+
+    Parameters
+    ----------
+    data_f, data_g, data_p : ndarray of shape (n,)
+        Samples from two candidate models and the true distribution.
+    title : str
+        Title of the score being displayed.
+    pit_type : str
+        Indicates whether the PITs are oracle or ECDF based.
+
+    Returns
+    -------
+    None
+        The plot is shown on screen.
     """
-        Plots histogram and KDE lines
-
-        Inputs:
-            data_f, data_g, data_p  :   The two candidate dist and true dist
-            title :                     The name of the score for which the histogram will be plotted
-
-        Returns:
-            histograms and KDE lines overlays
-        """
     kde_f = gaussian_kde(data_f)
     kde_g = gaussian_kde(data_g)
     kde_p = gaussian_kde(data_p)
@@ -71,17 +86,29 @@ def plot_histogram_kde(data_f, data_g, data_p, title, pit_type):
     plt.tight_layout()
     plt.show()
 
-def plot_score_diff_histogram_kde(diff_oracle, diff_ecdf, title, title2):
-    """
-    Plots histogram and KDE lines of score differences using oracle and ECDF-based PITs.
+def plot_score_diff_histogram_kde(
+    diff_oracle: np.ndarray,
+    diff_ecdf: np.ndarray,
+    title: str,
+    title2: str,
+) -> None:
+    """Plot histograms of score differences for oracle and ECDF PITs.
 
-    Inputs:
-        diff_oracle : np.ndarray – score differences (copula 1 - copula 2) using oracle PITs
-        diff_ecdf   : np.ndarray – score differences (copula 1 - copula 2) using ECDF PITs
-        title       : str – title of the score type (e.g., "LogS", "CS", "CLS")
+    Parameters
+    ----------
+    diff_oracle : ndarray of shape (n,)
+        Score differences computed with oracle PITs.
+    diff_ecdf : ndarray of shape (n,)
+        Score differences computed with ECDF PITs.
+    title : str
+        Name of the score type.
+    title2 : str
+        Additional descriptor for the copula pair.
 
-    Output:
-        Histogram and KDE plot
+    Returns
+    -------
+    None
+        The plot is shown on screen.
     """
     kde_oracle = gaussian_kde(diff_oracle)
     kde_ecdf = gaussian_kde(diff_ecdf)
@@ -105,20 +132,29 @@ def plot_score_diff_histogram_kde(diff_oracle, diff_ecdf, title, title2):
     plt.tight_layout()
     plt.show()
 
-def plot_score_diff_cdf(diff_oracle, diff_ecdf, title, title2):
-    """
-    Plot empirical CDFs of score differences using oracle and ECDF-based PITs.
+def plot_score_diff_cdf(
+    diff_oracle: np.ndarray,
+    diff_ecdf: np.ndarray,
+    title: str,
+    title2: str,
+) -> None:
+    """Plot empirical CDFs of score differences.
 
     Parameters
     ----------
-    diff_oracle : np.ndarray
-        Score differences (copula 1 - copula 2) calculated with oracle PITs.
-    diff_ecdf : np.ndarray
-        Score differences (copula 1 - copula 2) calculated with ECDF PITs.
+    diff_oracle : ndarray of shape (n,)
+        Score differences computed with oracle PITs.
+    diff_ecdf : ndarray of shape (n,)
+        Score differences computed with ECDF PITs.
     title : str
-        Name of the score type (e.g. "LogS", "CS", "CLS").
+        Name of the score type.
     title2 : str
-        Additional title descriptor, typically the copula pair.
+        Additional descriptor for the copula pair.
+
+    Returns
+    -------
+    None
+        The plot is shown on screen.
     """
     sorted_oracle = np.sort(diff_oracle)
     sorted_ecdf = np.sort(diff_ecdf)
@@ -138,9 +174,29 @@ def plot_score_diff_cdf(diff_oracle, diff_ecdf, title, title2):
     plt.tight_layout()
     plt.show()
 
-def validate_plot_data(score_dicts, pair_names, score_names, pair_label=None):
-    """
-    Validates that both oracle and ecdf data exist and are valid for each selected pair.
+def validate_plot_data(
+    score_dicts: dict,
+    pair_names: dict,
+    score_names: list[str],
+    pair_label: str | list[str] | None = None,
+) -> None:
+    """Validate that plot data are present for all selected pairs.
+
+    Parameters
+    ----------
+    score_dicts : dict
+        Mapping DiffKey -> {score_name: ndarray of shape (n,)}.
+    pair_names : dict
+        Mapping DiffKey -> human readable label.
+    score_names : list of str
+        Score names expected in ``score_dicts``.
+    pair_label : str or list of str or None, optional
+        Restrict validation to these labels.
+
+    Returns
+    -------
+    None
+        Prints messages about missing data.
     """
     print("=== Validating Plot Data ===")
 
@@ -188,14 +244,26 @@ def validate_plot_data(score_dicts, pair_names, score_names, pair_label=None):
     if not issues_found:
         print("All selected pairs are valid for plotting.")
 
-def plot_score_differences(score_dicts, score_names, pair_to_keys):
-    """
-    Plot histograms and KDEs of score differences using explicitly passed keys per pair.
+def plot_score_differences(
+    score_dicts: dict,
+    score_names: list[str],
+    pair_to_keys: dict,
+) -> None:
+    """Plot histograms of score differences for multiple pairs.
 
-    Parameters:
-    - score_dicts: dict of {DiffKey: {score_name: array}}
-    - score_names: list of score names
-    - pair_to_keys: dict mapping plot label (e.g. "f - g") -> (oracle_key, ecdf_key)
+    Parameters
+    ----------
+    score_dicts : dict
+        Mapping DiffKey -> {score_name: ndarray of shape (n,)}.
+    score_names : list of str
+        Score names to display.
+    pair_to_keys : dict
+        Mapping plot label -> (oracle_key, ecdf_key).
+
+    Returns
+    -------
+    None
+        The plots are shown on screen.
     """
     for label, (oracle_key, ecdf_key) in pair_to_keys.items():
         if oracle_key not in score_dicts or ecdf_key not in score_dicts:
@@ -238,18 +306,26 @@ def plot_score_differences(score_dicts, score_names, pair_to_keys):
         plt.tight_layout(rect=[0, 0, 1, 0.95])
         plt.show()
 
-def plot_score_differences_cdf(score_dicts, score_names, pair_to_keys):
-    """
-    Plot empirical CDFs of score differences using explicitly passed suffixes per pair.
+def plot_score_differences_cdf(
+    score_dicts: dict,
+    score_names: list[str],
+    pair_to_keys: dict,
+) -> None:
+    """Plot empirical CDFs of score differences for multiple pairs.
 
     Parameters
     ----------
     score_dicts : dict
-        Dictionary mapping DiffKey -> {score_name: array}.
-    score_names : list
-        List of score names to plot.
+        Mapping DiffKey -> {score_name: ndarray of shape (n,)}.
+    score_names : list of str
+        Names of the scores to plot.
     pair_to_keys : dict
-        Mapping plot label (e.g. "f - g") -> (oracle_key, ecdf_key).
+        Mapping label -> (oracle_key, ecdf_key).
+
+    Returns
+    -------
+    None
+        The plots are shown on screen.
     """
     for label, (oracle_key, ecdf_key) in pair_to_keys.items():
         if oracle_key not in score_dicts or ecdf_key not in score_dicts:
@@ -288,23 +364,23 @@ def plot_score_differences_cdf(score_dicts, score_names, pair_to_keys):
         plt.tight_layout(rect=[0, 0, 1, 0.95])
         plt.show()
 
-def plot_aligned_kl_matched_scores(score_dicts, score_score_keys):
-    """
-    Plots three score difference histograms/KDEs aligned horizontally.
+def plot_aligned_kl_matched_scores(
+    score_dicts: dict,
+    score_score_keys: list[tuple[str, str, str, str]],
+) -> None:
+    """Plot aligned histograms of KL-matched score differences.
 
-    Parameters:
-    - score_dicts: dict of {DiffKey: {score_name: np.ndarray}}, as constructed from your diffs.
-    - score_score_keys: list of tuples:
-        [
-            (score_name, label, oracle_key, ecdf_key),
-            ...
-        ]
-      For example:
-        [
-            ("LogS", "bb1 - f_for_KL_matching", "oracle_bb1_f_for_KL_matching", "ecdf_bb1_f_for_KL_matching"),
-            ("CS", "bb1_localized - f_for_KL_matching", "oracle_bb1_localized_f_for_KL_matching", "ecdf_bb1_localized_f_for_KL_matching"),
-            ("CLS", "bb1_local - f_for_KL_matching", "oracle_bb1_local_f_for_KL_matching", "ecdf_bb1_local_f_for_KL_matching"),
-        ]
+    Parameters
+    ----------
+    score_dicts : dict
+        Mapping DiffKey -> {score_name: ndarray of shape (n,)}.
+    score_score_keys : list of tuple
+        ``(score_name, label, oracle_key, ecdf_key)`` for each subplot.
+
+    Returns
+    -------
+    None
+        The plots are shown on screen.
     """
     num_scores = len(score_score_keys)
     fig, axes = plt.subplots(1, num_scores, figsize=(6 * num_scores, 5), sharey=True)
@@ -344,16 +420,23 @@ def plot_aligned_kl_matched_scores(score_dicts, score_score_keys):
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     plt.show()
 
-def plot_aligned_kl_matched_scores_cdf(score_dicts, score_score_keys):
-    """
-    Plot three score difference CDFs aligned horizontally.
+def plot_aligned_kl_matched_scores_cdf(
+    score_dicts: dict,
+    score_score_keys: list[tuple[str, str, str, str]],
+) -> None:
+    """Plot aligned CDFs of KL-matched score differences.
 
     Parameters
     ----------
     score_dicts : dict
-        Mapping DiffKey -> {score_name: np.ndarray}.
-    score_score_keys : list of tuples
-        [(score_name, label, oracle_key, ecdf_key), ...]
+        Mapping DiffKey -> {score_name: ndarray of shape (n,)}.
+    score_score_keys : list of tuple
+        ``(score_name, label, oracle_key, ecdf_key)`` describing each subplot.
+
+    Returns
+    -------
+    None
+        The plots are shown on screen.
     """
     num_scores = len(score_score_keys)
     fig, axes = plt.subplots(1, num_scores, figsize=(6 * num_scores, 5), sharey=True)
@@ -390,8 +473,27 @@ def plot_aligned_kl_matched_scores_cdf(score_dicts, score_score_keys):
     plt.show()
 
 
-def plot_size_test_results(size_results, score_names, alpha=0.05):
-    """Visualize p-values from size tests across score types."""
+def plot_size_test_results(
+    size_results: dict,
+    score_names: list[str],
+    alpha: float = 0.05,
+) -> None:
+    """Visualize p-values from size tests across score types.
+
+    Parameters
+    ----------
+    size_results : dict
+        Mapping label -> {score_name: {"oracle": {"p_value": float}, "ecdf": {"p_value": float}}}.
+    score_names : list of str
+        Names of the scores to visualize.
+    alpha : float, default 0.05
+        Significance threshold drawn as a horizontal line.
+
+    Returns
+    -------
+    None
+        The plots are shown on screen.
+    """
 
     for label, res_pair in size_results.items():
         oracle_pvals = [res_pair[sc]["oracle"]["p_value"] for sc in score_names]
@@ -413,19 +515,30 @@ def plot_size_test_results(size_results, score_names, alpha=0.05):
         plt.tight_layout()
         plt.show()
 
-def plot_size_curves(size_curve_dict, pair_labels, plot_type="discrepancy", title=None):
+def plot_size_curves(
+    size_curve_dict: dict,
+    pair_labels: dict,
+    plot_type: str = "discrepancy",
+    title: str | None = None,
+) -> None:
     """Plot size discrepancy or rejection rate curves.
 
     Parameters
     ----------
     size_curve_dict : dict
-        Mapping DiffKey -> (alpha_grid, rejection_rates, discrepancies).
+        Mapping DiffKey -> (alpha_grid, rejection_rates, discrepancies) where each
+        element is an ndarray of shape (m,).
     pair_labels : dict
-        Mapping DiffKey -> human-readable pair label.
-    plot_type : {"discrepancy", "rejection"}
-        Select y-axis content.
+        Mapping DiffKey -> human readable label.
+    plot_type : {"discrepancy", "rejection"}, default "discrepancy"
+        Selects the quantity plotted on the y-axis.
     title : str, optional
         Title for the plot.
+
+    Returns
+    -------
+    None
+        The plot is shown on screen.
     """
 
     if plot_type not in {"discrepancy", "rejection"}:
