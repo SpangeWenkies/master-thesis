@@ -1337,7 +1337,6 @@ def compare_trueU_ecdfU_score(R, P, H, grid_size, theta, delta, df, verbose=True
 
         # We pretend we predicted these because we had a correct copula specification
         u1_target = true_u1[t + H - 1]
-        u1_target = true_u1[t + H - 1]
 
         y1_train = student_t.ppf(u1_train, df)
         y2_train = student_t.ppf(u2_train, df)
