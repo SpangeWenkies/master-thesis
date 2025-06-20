@@ -5,13 +5,15 @@ from scipy.optimize import minimize
 from scipy.stats import multivariate_t, t as student_t
 from tqdm import tqdm
 
-from utils.util_funcs import (
+from utils.copula_utils import (
     ecdf_transform,
     sample_region_mask,
     sim_sGumbel_PITs,
     sGumbel_copula_pdf_from_PITs,
     student_t_copula_pdf_from_PITs,
     bb1_copula_pdf_from_PITs,
+)
+from utils.scoring import (
     LogS_student_t_copula,
     CS_student_t_copula,
     CLS_student_t_copula,
