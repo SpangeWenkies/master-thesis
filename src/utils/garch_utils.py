@@ -12,16 +12,24 @@ logger = logging.getLogger(__name__)
 
 def WhiteNoiseSim(iT: int, vDistrParams: np.ndarray, sDistrName: str) -> np.ndarray:
     """Generate white noise from a supported distribution."""
+    if iT <= 0:
+        raise ValueError("iT must be positive")
     lDistrName = ['normal', 't']
     if sDistrName not in lDistrName:
         raise ValueError("Distribution not supported.")
     if sDistrName == 'normal':
         return np.random.randn(iT)
+    if vDistrParams.size == 0 or vDistrParams[0] <= 0:
+        raise ValueError("vDistrParams[0] must be positive for t distribution")
     return np.random.standard_t(vDistrParams[0], size=iT)
 
 
 def GARCHSim(iT: int, vGARCHParams: np.ndarray, iP: int, vDistrParams: np.ndarray, sDistrName: str) -> np.ndarray:
     """Simulate a GARCH(p,q) process."""
+    if iT <= 0:
+        raise ValueError("iT must be positive")
+    if vGARCHParams.size < iP + 1:
+        raise ValueError("vGARCHParams has insufficient length")
     dOmega = vGARCHParams[0]
     vAlpha = vGARCHParams[1:iP + 1]
     vBeta = vGARCHParams[iP + 1:]
