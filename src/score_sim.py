@@ -62,7 +62,7 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho,
     total_oracle_u_p = student_t.cdf(samples_p, df)
     total_ecdf_u_p = ecdf_transform(samples_p)  #DIT MOET MISSCHIEN total_oracle_u_p GEBRUIKEN
     # Mask each observation to include only the tail region in the scores
-    w_p = sample_region_mask(total_oracle_u_p, q_threshold, df)
+    # (weights will later be recomputed per window)
 
     # Define DGP2 (survival Gumbel)
     total_oracle_u_sGumbel = sim_sGumbel_PITs(n, theta_sGumbel)
@@ -71,7 +71,6 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho,
         student_t.ppf(total_oracle_u_sGumbel[:, 1], df)
     ])
     total_ecdf_u_sGumbel = ecdf_transform(samples_sGumbel)  #DIT MOET MISSCHIEN total_oracle_u_sGumbel GEBRUIKEN
-    w_sGumbel = sample_region_mask(total_oracle_u_sGumbel, 0.05, df)
 
     ecdf_u_p = np.empty((P, R, 2))
     oracle_u_p = np.empty((P, R, 2))
@@ -88,36 +87,36 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho,
     # Store rolling-window PITs and model parameters
     model_info = {
         "f": {
-            "oracle": (oracle_u_p, w_p, {"rho": f_rho, "df": df}),
-            "ecdf": (ecdf_u_p, w_p, {"rho": f_rho, "df": df}),
+            "oracle": (oracle_u_p, {"rho": f_rho, "df": df}),
+            "ecdf": (ecdf_u_p, {"rho": f_rho, "df": df}),
         },
         "g": {
-            "oracle": (oracle_u_p, w_p, {"rho": g_rho, "df": df}),
-            "ecdf": (ecdf_u_p, w_p, {"rho": g_rho, "df": df}),
+            "oracle": (oracle_u_p, {"rho": g_rho, "df": df}),
+            "ecdf": (ecdf_u_p, {"rho": g_rho, "df": df}),
         },
         "p": {
-            "oracle": (oracle_u_p, w_p, {"rho": p_rho, "df": df}),
-            "ecdf": (ecdf_u_p, w_p, {"rho": p_rho, "df": df}),
+            "oracle": (oracle_u_p, {"rho": p_rho, "df": df}),
+            "ecdf": (ecdf_u_p, {"rho": p_rho, "df": df}),
         },
         "bb1": {
-            "oracle": (oracle_u_sGumbel, w_sGumbel, {"theta": theta_bb1, "delta": delta_bb1}),
-            "ecdf": (ecdf_u_sGumbel, w_sGumbel, {"theta": theta_bb1, "delta": delta_bb1}),
+            "oracle": (oracle_u_sGumbel, {"theta": theta_bb1, "delta": delta_bb1}),
+            "ecdf": (ecdf_u_sGumbel, {"theta": theta_bb1, "delta": delta_bb1}),
         },
         "bb1_localized": {
-            "oracle": (oracle_u_sGumbel, w_sGumbel, {"theta": theta_bb1_localized, "delta": delta_bb1_localized}),
-            "ecdf": (ecdf_u_sGumbel, w_sGumbel, {"theta": theta_bb1_localized, "delta": delta_bb1_localized}),
+            "oracle": (oracle_u_sGumbel, {"theta": theta_bb1_localized, "delta": delta_bb1_localized}),
+            "ecdf": (ecdf_u_sGumbel, {"theta": theta_bb1_localized, "delta": delta_bb1_localized}),
         },
         "bb1_local": {
-            "oracle": (oracle_u_sGumbel, w_sGumbel, {"theta": theta_bb1_local, "delta": delta_bb1_local}),
-            "ecdf": (ecdf_u_sGumbel, w_sGumbel, {"theta": theta_bb1_local, "delta": delta_bb1_local}),
+            "oracle": (oracle_u_sGumbel, {"theta": theta_bb1_local, "delta": delta_bb1_local}),
+            "ecdf": (ecdf_u_sGumbel, {"theta": theta_bb1_local, "delta": delta_bb1_local}),
         },
         "f_for_KL_matching": {
-            "oracle": (oracle_u_sGumbel, w_sGumbel, {"rho": f_rho, "df": df}),
-            "ecdf": (ecdf_u_sGumbel, w_sGumbel, {"rho": f_rho, "df": df}),
+            "oracle": (oracle_u_sGumbel, {"rho": f_rho, "df": df}),
+            "ecdf": (ecdf_u_sGumbel, {"rho": f_rho, "df": df}),
         },
         "sGumbel": {
-            "oracle": (oracle_u_sGumbel, w_sGumbel, {"theta": theta_sGumbel}),
-            "ecdf": (ecdf_u_sGumbel, w_sGumbel, {"theta": theta_sGumbel}),
+            "oracle": (oracle_u_sGumbel, {"theta": theta_sGumbel}),
+            "ecdf": (ecdf_u_sGumbel, {"theta": theta_sGumbel}),
         },
     }
 
@@ -128,16 +127,17 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho,
     for model, pits in model_info.items():
         # Determine which scoring family is associated with this model
         family = MODEL_FAMILY[model]
-        for pit, (u_dat, w_dat, params) in pits.items():
+        for pit, (u_dat, params) in pits.items():
             log_v = np.empty(P)
             cs_v = np.empty(P)
             cls_v = np.empty(P)
             for k in range(P):
                 window_u = u_dat[k]
+                w_win = sample_region_mask(window_u, q_threshold, df)
                 # Use the underlying scoring family when computing the scores
                 log_v[k] = score_vectors(window_u, family, "LogS", **params)
-                cs_v[k] = score_vectors(window_u, family, "CS", w=w_dat, **params)
-                cls_v[k] = score_vectors(window_u, family, "CLS", w=w_dat, **params)
+                cs_v[k] = score_vectors(window_u, family, "CS", w=w_win, **params)
+                cls_v[k] = score_vectors(window_u, family, "CLS", w=w_win, **params)
             for name, vec in zip(["LogS", "CS", "CLS"], [log_v, cs_v, cls_v]):
                 score_vecs[name][model][pit] = vec
                 score_sums[name][model][pit] = float(np.sum(vec))
