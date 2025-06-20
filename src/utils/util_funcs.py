@@ -1122,14 +1122,16 @@ def create_region(U1, U2, F1_inv, F2_inv, q_alpha):
 ###########################################################
 def copula_pdf_student_t(U1, U2, rho, df):
     """
-        Create a binary mask for the region where F1_inv(U1) + F2_inv(U2) <= q_alpha.
+        Compute the probability density function of a bivariate Student-t
+        copula.
 
         Inputs:
-            U1, U2  : Meshgrid same shape as copula_pdf
-            rho     : Correlation parameter [-1,1]
-            df      : the threshold quantile of the restriction (in this case Y1+Y2)
+            U1, U2  : Meshgrid arrays (or flattened arrays) of PITs in (0, 1)
+            rho     : Correlation parameter in ``[-1, 1]``
+            df      : Degrees of freedom of the Student-t distribution
+
         Outputs:
-            copola pdf of a student-t copula
+            Copula PDF evaluated at ``(U1, U2)``
     """
 
 
