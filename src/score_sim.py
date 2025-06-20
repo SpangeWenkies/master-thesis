@@ -21,6 +21,20 @@ SCORE_FUNCS = {
                   "CLS":  CLS_bb1}
 }
 
+# Map high level model names to their scoring family.  The keys correspond to
+# the model identifiers used throughout the simulation while the values denote
+# which scoring functions should be employed.
+MODEL_FAMILY = {
+    "f": "student_t",
+    "g": "student_t",
+    "p": "student_t",
+    "bb1": "bb1",
+    "bb1_localized": "bb1",
+    "bb1_local": "bb1",
+    "f_for_KL_matching": "student_t",
+    "sGumbel": "sGumbel",
+}
+
 def simulate_one_rep(n, df, f_rho, g_rho, p_rho,
                      theta_bb1, delta_bb1,
                      theta_bb1_localized, delta_bb1_localized,
@@ -114,15 +128,18 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho,
 
     # Evaluate scores for each rolling window
     for model, pits in model_info.items():
+        # Determine which scoring family is associated with this model
+        family = MODEL_FAMILY[model]
         for pit, (u_dat, w_dat, params) in pits.items():
             log_v = np.empty(P)
             cs_v = np.empty(P)
             cls_v = np.empty(P)
             for k in range(P):
                 window_u = u_dat[k]
-                log_v[k] = score_vectors(window_u, model, "LogS", **params)
-                cs_v[k] = score_vectors(window_u, model, "CS", w=w_dat, **params)
-                cls_v[k] = score_vectors(window_u, model, "CLS", w=w_dat, **params)
+                # Use the underlying scoring family when computing the scores
+                log_v[k] = score_vectors(window_u, family, "LogS", **params)
+                cs_v[k] = score_vectors(window_u, family, "CS", w=w_dat, **params)
+                cls_v[k] = score_vectors(window_u, family, "CLS", w=w_dat, **params)
             for name, vec in zip(["LogS", "CS", "CLS"], [log_v, cs_v, cls_v]):
                 score_vecs[name][model][pit] = vec
                 score_sums[name][model][pit] = float(np.sum(vec))
