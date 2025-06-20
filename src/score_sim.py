@@ -1,13 +1,64 @@
 import numpy as np
-
-from utils.util_funcs import *
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from tqdm import tqdm
-from scipy.optimize import minimize
-from score_sim_config import *
-from utils.plot_utils import *
 from itertools import combinations
-from utils.score_helpers import *
+from scipy.optimize import minimize
+from scipy.stats import multivariate_t, t as student_t
+from tqdm import tqdm
+
+from utils.util_funcs import (
+    ecdf_transform,
+    sample_region_mask,
+    sim_sGumbel_PITs,
+    sGumbel_copula_pdf_from_PITs,
+    student_t_copula_pdf_from_PITs,
+    bb1_copula_pdf_from_PITs,
+    LogS_student_t_copula,
+    CS_student_t_copula,
+    CLS_student_t_copula,
+    LogS_sGumbel,
+    CS_sGumbel,
+    CLS_sGumbel,
+    LogS_bb1,
+    CS_bb1,
+    CLS_bb1,
+    estimate_kl_divergence_copulas,
+    estimate_localized_kl,
+    estimate_local_kl,
+)
+from utils.score_helpers import (
+    div_by_stdev,
+    make_score_dicts,
+    t_test_per_replication,
+    perform_size_tests,
+)
+from utils.plot_utils import (
+    plot_size_curves,
+    plot_score_differences,
+    plot_aligned_kl_matched_scores,
+    plot_aligned_kl_matched_scores_cdf,
+)
+from utils.structure_defs import DiffKey
+from score_sim_config import (
+    R,
+    P,
+    n,
+    df,
+    f_rho,
+    g_rho,
+    p_rho,
+    theta_sGumbel,
+    reps,
+    q_threshold,
+    kl_match_optim_method,
+    bb1_param_bounds,
+    pit_types,
+    score_types,
+    all_copula_models,
+    copula_models_for_plots,
+    pair_to_keys,
+    pair_to_keys_size,
+    score_score_keys,
+)
 
 SCORE_FUNCS = {
     "student_t": {"LogS": LogS_student_t_copula,
