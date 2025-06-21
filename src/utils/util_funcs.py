@@ -15,7 +15,6 @@ from scipy.stats import t as student_t
 from scipy.stats import multivariate_t
 from scipy.stats import ttest_1samp
 from tqdm import tqdm
-import scipy.optimize as opt
 from concurrent.futures import ProcessPoolExecutor
 import logging
 

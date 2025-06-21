@@ -5,8 +5,8 @@
 
 import numpy as np
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from scipy.optimize import minimize
 from tqdm import tqdm
+from utils.optimize_utils import minimize_with_tqdm
 from itertools import combinations
 import logging
 
@@ -126,12 +126,27 @@ def tune_bb1_params(samples_list, masks_list, pdf_sg, pdf_f, verbose=False):
         kl_vals = [estimate_local_kl(u, pdf_sg, pdf, m) for u, m in zip(samples_list, masks_list)]
         return (np.mean(kl_vals) - target_local) ** 2
 
-    res_full = minimize(obj, x0=[2.0, 2.5], bounds=bb1_param_bounds,
-                        method=kl_match_optim_method)
-    res_loc = minimize(obj_loc, x0=[2.0, 2.5], bounds=bb1_param_bounds,
-                       method=kl_match_optim_method)
-    res_local = minimize(obj_local, x0=[2.0, 2.5], bounds=bb1_param_bounds,
-                         method=kl_match_optim_method)
+    res_full = minimize_with_tqdm(
+        obj,
+        x0=[2.0, 2.5],
+        bounds=bb1_param_bounds,
+        method=kl_match_optim_method,
+        description="KL match full",
+    )
+    res_loc = minimize_with_tqdm(
+        obj_loc,
+        x0=[2.0, 2.5],
+        bounds=bb1_param_bounds,
+        method=kl_match_optim_method,
+        description="KL match localized",
+    )
+    res_local = minimize_with_tqdm(
+        obj_local,
+        x0=[2.0, 2.5],
+        bounds=bb1_param_bounds,
+        method=kl_match_optim_method,
+        description="KL match local",
+    )
 
     pdf_full = lambda u: bb1_copula_pdf_from_PITs(u, res_full.x[0], res_full.x[1])
     pdf_loc = lambda u: bb1_copula_pdf_from_PITs(u, res_loc.x[0], res_loc.x[1])

@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import numpy as np
-import scipy.optimize as opt
 from scipy.stats import rankdata
 import logging
+from .optimize_utils import minimize_with_tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +154,13 @@ def GARCHEstim(
     """
     iT = len(vY)
     vGARCHParams0Tr = np.log(vGARCHParams0)
-    res = opt.minimize(AvgNLnLGARCHTr, vGARCHParams0Tr, args=(iP, vY), method="BFGS")
+    res = minimize_with_tqdm(
+        AvgNLnLGARCHTr,
+        vGARCHParams0Tr,
+        args=(iP, vY),
+        method="BFGS",
+        description="GARCH fit",
+    )
     vGARCHParamsStar = np.exp(res.x)
     dLL = -iT * res.fun
     if verbose:
