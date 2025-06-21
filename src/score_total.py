@@ -39,13 +39,12 @@ from utils.scoring import (
 from utils.score_helpers import div_by_stdev, make_score_dicts
 from utils.plot_utils import (
     plot_score_differences,
+    plot_score_differences_cdf,
     plot_aligned_kl_matched_scores,
     plot_aligned_kl_matched_scores_cdf,
 )
 from utils.structure_defs import DiffKey
 from score_sim_config import (
-    R,
-    P,
     n,
     df,
     f_rho,
@@ -61,6 +60,7 @@ from score_sim_config import (
     all_copula_models,
     copula_models_for_plots,
     pair_to_keys,
+    pair_to_keys_size,  # Is used here for cdf plot of just f-g
     score_score_keys,
 )
 
@@ -276,6 +276,7 @@ def main():
     score_dicts = make_score_dicts(diffs, diff_keys, score_types)
 
     plot_score_differences(score_dicts, score_types, pair_to_keys)
+    plot_score_differences_cdf(score_dicts, score_types, pair_to_keys_size)
     plot_aligned_kl_matched_scores(score_dicts, score_score_keys)
     plot_aligned_kl_matched_scores_cdf(score_dicts, score_score_keys)
 
