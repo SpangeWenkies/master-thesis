@@ -12,7 +12,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
-
+logging.getLogger("rpy2").setLevel(logging.WARNING)
 
 from utils.copula_utils import (
     sim_sGumbel_PITs,
@@ -137,27 +137,21 @@ def tune_bb1_params(samples_list, masks_list, pdf_sg, pdf_f, verbose=False):
     pdf_loc = lambda u: bb1_copula_pdf_from_PITs(u, res_loc.x[0], res_loc.x[1])
     pdf_local = lambda u: bb1_copula_pdf_from_PITs(u, res_local.x[0], res_local.x[1])
 
-    optim_kl = np.mean([
-        estimate_kl_divergence_copulas(u, pdf_sg, pdf_full) for u in samples_list
-    ])
-    optim_kl_loc = np.mean([
-        estimate_kl_divergence_copulas(u, pdf_sg, pdf_loc) for u in samples_list
-    ])
-    optim_kl_local = np.mean([
-        estimate_kl_divergence_copulas(u, pdf_sg, pdf_local) for u in samples_list
-    ])
+    optim_kl = np.mean([estimate_kl_divergence_copulas(u, pdf_sg, pdf_full) for u in samples_list])
+    optim_kl_loc = np.mean([estimate_localized_kl(u, pdf_sg, pdf_loc, m) for u, m in zip(samples_list, masks_list)])
+    optim_kl_local = np.mean([estimate_local_kl(u, pdf_sg, pdf_local, m) for u, m in zip(samples_list, masks_list)])
 
 
     if verbose:
-        logger.info(f"Tuned BB1 (oracle PITs): theta = {res_full.x[0]:.4f}, delta = {res_full.x[1]:.4f}")
-        logger.info(f"Target KL(sGumbel||f) oracle: {target_kl:.6f}")
-        logger.info(f"Optimized KL(sGumbel||bb1): {optim_kl:.6f}")
-        logger.info(f"Tuned BB1 (oracle PITs): theta = {res_loc.x[0]:.4f}, delta = {res_loc.x[1]:.4f}")
-        logger.info(f"Target KL(sGumbel||f) oracle: {target_loc:.6f}")
-        logger.info(f"Optimized KL(sGumbel||bb1): {optim_kl_loc:.6f}")
-        logger.info(f"Tuned BB1 (oracle PITs): theta = {res_full.x[0]:.4f}, delta = {res_full.x[1]:.4f}")
-        logger.info(f"Target KL(sGumbel||f) oracle: {target_local:.6f}")
-        logger.info(f"Optimized KL(sGumbel||bb1): {optim_kl_local:.6f}")
+        logger.info(f"Tuned BB1 (full): theta = {res_full.x[0]:.4f}, delta = {res_full.x[1]:.4f}")
+        logger.info(f"Target KL(sGumbel||f) full: {target_kl:.6f}")
+        logger.info(f"Optimized full KL(sGumbel||bb1): {optim_kl:.6f}")
+        logger.info(f"Tuned BB1 (localized): theta = {res_loc.x[0]:.4f}, delta = {res_loc.x[1]:.4f}")
+        logger.info(f"Target KL(sGumbel||f) localized: {target_loc:.6f}")
+        logger.info(f"Optimized localized KL(sGumbel||bb1): {optim_kl_loc:.6f}")
+        logger.info(f"Tuned BB1 (local): theta = {res_local.x[0]:.4f}, delta = {res_local.x[1]:.4f}")
+        logger.info(f"Target KL(sGumbel||f) local: {target_local:.6f}")
+        logger.info(f"Optimized local KL(sGumbel||bb1): {optim_kl_local:.6f}")
 
     return res_full.x, res_loc.x, res_local.x
 

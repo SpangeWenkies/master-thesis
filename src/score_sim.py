@@ -3,7 +3,6 @@
 import numpy as np
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from itertools import combinations
-from scipy.optimize import minimize
 from scipy.stats import multivariate_t, t as student_t
 from tqdm import tqdm
 
@@ -13,7 +12,6 @@ from utils.copula_utils import (
     sim_sGumbel_PITs,
     sGumbel_copula_pdf_from_PITs,
     student_t_copula_pdf_from_PITs,
-    bb1_copula_pdf_from_PITs,
 )
 from utils.scoring import (
     LogS_student_t_copula,
@@ -25,9 +23,6 @@ from utils.scoring import (
     LogS_bb1,
     CS_bb1,
     CLS_bb1,
-    estimate_kl_divergence_copulas,
-    estimate_localized_kl,
-    estimate_local_kl,
 )
 from utils.score_helpers import (
     div_by_stdev,
@@ -53,8 +48,6 @@ from score_sim_config import (
     theta_sGumbel,
     reps,
     q_threshold,
-    kl_match_optim_method,
-    bb1_param_bounds,
     pit_types,
     score_types,
     all_copula_models,
@@ -115,7 +108,6 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho,
     # Define DGP1 (indep. student-t)
     samples_p = multivariate_t.rvs(loc=[0, 0], shape=[[1, 0], [0, 1]], df=df, size=n)
     total_oracle_u_p = student_t.cdf(samples_p, df)
-    total_ecdf_u_p = ecdf_transform(samples_p)  #DIT MOET MISSCHIEN total_oracle_u_p GEBRUIKEN
     # Mask each observation to include only the tail region in the scores
     # (weights will later be recomputed per window)
 
@@ -125,7 +117,6 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho,
         student_t.ppf(total_oracle_u_sGumbel[:, 0], df),
         student_t.ppf(total_oracle_u_sGumbel[:, 1], df)
     ])
-    total_ecdf_u_sGumbel = ecdf_transform(samples_sGumbel)  #DIT MOET MISSCHIEN total_oracle_u_sGumbel GEBRUIKEN
 
     ecdf_u_p = np.empty((P, R, 2))
     oracle_u_p = np.empty((P, R, 2))
