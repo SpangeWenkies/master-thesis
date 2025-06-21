@@ -1,3 +1,5 @@
+# Rolling-window simulation script. Run with `python src/score_sim.py`
+
 import numpy as np
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from itertools import combinations
@@ -212,127 +214,22 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho,
 
 if __name__ == '__main__':
 
-    # === Oracle KL matching ===
+    # === Obtain KL-matched BB1 parameters ===
 
-    # Simulate oracle survival Gumbel PITs & region masks based on those PITs once to reuse
-    oracle_samples_list = [sim_sGumbel_PITs(n, theta_sGumbel) for _ in range(reps)]
-    oracle_masks_list = [sample_region_mask(u, q_threshold, df=df) for u in oracle_samples_list]
-
-    # Define PDFs
     pdf_sGumbel = lambda u: sGumbel_copula_pdf_from_PITs(u, theta_sGumbel)
     pdf_f = lambda u: student_t_copula_pdf_from_PITs(u, rho=f_rho, df=df)
 
-    # Full KL divergence target calculation
-    kl_oracle_sGumbel_g_list = [
-        estimate_kl_divergence_copulas(u, pdf_sGumbel, pdf_f)
-        for u in oracle_samples_list
-    ]
-    target_kl_oracle = np.mean(kl_oracle_sGumbel_g_list)
+    oracle_samples_list = [sim_sGumbel_PITs(n, theta_sGumbel) for _ in range(reps)]
+    oracle_masks_list = [sample_region_mask(u, q_threshold, df=df) for u in oracle_samples_list]
 
-    # Localized KL divergence target calculation
-    localized_kl_list = [
-        estimate_localized_kl(u, pdf_sGumbel, pdf_f, mask)
-        for u, mask in zip(oracle_samples_list, oracle_masks_list)
-    ]
-    target_localized_kl_oracle = np.mean(localized_kl_list)
+    from score_total import tune_bb1_params
 
-    # Local KL divergence target calculation
-    localized_kl_list = [
-        estimate_local_kl(u, pdf_sGumbel, pdf_f, mask)
-        for u, mask in zip(oracle_samples_list, oracle_masks_list)
-    ]
-    target_local_kl_oracle = np.mean(localized_kl_list)
-
-
-    # === Optimization ===
-
-    # Optimization objectives
-    def bb1_oracle_objective(params):
-        theta, delta = params
-        if theta <= 0 or delta < 1:
-            return np.inf
-        pdf_bb1 = lambda u: bb1_copula_pdf_from_PITs(u, theta, delta)
-        kl_vals = [estimate_kl_divergence_copulas(u, pdf_sGumbel, pdf_bb1) for u in oracle_samples_list]
-        return (np.mean(kl_vals) - target_kl_oracle) ** 2
-
-    def bb1_localized_oracle_objective(params):
-        theta, delta = params
-        if theta <= 0 or delta < 1:
-            return np.inf
-        pdf_bb1 = lambda u: bb1_copula_pdf_from_PITs(u, theta, delta)
-        kl_vals = [
-            estimate_localized_kl(u, pdf_sGumbel, pdf_bb1, mask)
-            for u, mask in zip(oracle_samples_list, oracle_masks_list)
-        ]
-        return (np.mean(kl_vals) - target_localized_kl_oracle) ** 2
-
-    def bb1_local_oracle_objective(params):
-        theta, delta = params
-        if theta <= 0 or delta < 1:
-            return np.inf
-        pdf_bb1 = lambda u: bb1_copula_pdf_from_PITs(u, theta, delta)
-        kl_vals = [
-            estimate_local_kl(u, pdf_sGumbel, pdf_bb1, mask)
-            for u, mask in zip(oracle_samples_list, oracle_masks_list)
-        ]
-        return (np.mean(kl_vals) - target_local_kl_oracle) ** 2
-
-    print("on to minimization")
-    # Run optimization
-    res_oracle = minimize(
-        bb1_oracle_objective,
-        x0=[2.0, 2.5],
-        bounds=bb1_param_bounds,
-        method=kl_match_optim_method,
-        options={'disp': True}
+    (theta_bb1_oracle, delta_bb1_oracle), (theta_bb1_localized_oracle, delta_bb1_localized_oracle), (theta_bb1_local_oracle, delta_bb1_local_oracle) = tune_bb1_params(
+        oracle_samples_list,
+        oracle_masks_list,
+        pdf_sGumbel,
+        pdf_f,
     )
-    print("on to localized minimization")
-    res_localized_oracle = minimize(
-        bb1_localized_oracle_objective,
-        x0=[2.0, 2.5],
-        bounds=bb1_param_bounds,
-        method=kl_match_optim_method,
-        options={'disp': True}
-    )
-    print("on to local minimization")
-    res_local_oracle = minimize(
-        bb1_local_oracle_objective,
-        x0=[2.0, 2.5],
-        bounds=bb1_param_bounds,
-        method=kl_match_optim_method,
-        options={'disp': True}
-    )
-
-    # === Final reporting of KL matching ===
-
-    theta_bb1_oracle, delta_bb1_oracle = res_oracle.x
-    pdf_bb1_opt = lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1_oracle, delta_bb1_oracle)
-
-    theta_bb1_localized_oracle, delta_bb1_localized_oracle = res_localized_oracle.x
-    pdf_bb1_opt_localized = lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1_localized_oracle, delta_bb1_localized_oracle)
-
-    theta_bb1_local_oracle, delta_bb1_local_oracle = res_local_oracle.x
-    pdf_bb1_opt_local = lambda u: bb1_copula_pdf_from_PITs(u, theta_bb1_local_oracle, delta_bb1_local_oracle)
-
-    kl_final = estimate_kl_divergence_copulas(np.vstack(oracle_samples_list), pdf_sGumbel, pdf_bb1_opt)
-    kl_final_localized = estimate_localized_kl(
-        np.vstack(oracle_samples_list), pdf_sGumbel, pdf_bb1_opt_localized, np.concatenate(oracle_masks_list)
-    )
-    kl_final_local = estimate_local_kl(
-        np.vstack(oracle_samples_list), pdf_sGumbel, pdf_bb1_opt_local, np.concatenate(oracle_masks_list)
-    )
-
-    print(f"Tuned BB1 (oracle PITs): theta = {theta_bb1_oracle:.4f}, delta = {delta_bb1_oracle:.4f}")
-    print(f"Target KL(sGumbel||f) oracle: {target_kl_oracle:.6f}")
-    print(f"Optimized KL(sGumbel||bb1): {kl_final:.6f}")
-    print(
-        f"Tuned localized BB1 (oracle PITs): theta = {theta_bb1_localized_oracle:.4f}, delta = {delta_bb1_localized_oracle:.4f}")
-    print(f"Target localized KL(sGumbel||f) oracle: {target_localized_kl_oracle:.6f}")
-    print(f"Optimized localized KL(sGumbel||bb1): {kl_final_localized:.6f}")
-    print(
-        f"Tuned local BB1 (oracle PITs): theta = {theta_bb1_local_oracle:.4f}, delta = {delta_bb1_local_oracle:.4f}")
-    print(f"Target local KL(sGumbel||f) oracle: {target_local_kl_oracle:.6f}")
-    print(f"Optimized local KL(sGumbel||bb1): {kl_final_local:.6f}")
 
     results = []
 
