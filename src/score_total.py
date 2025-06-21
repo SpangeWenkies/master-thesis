@@ -11,6 +11,7 @@ from itertools import combinations
 import logging
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 
 from utils.copula_utils import (
@@ -132,9 +133,19 @@ def tune_bb1_params(samples_list, masks_list, pdf_sg, pdf_f, verbose=False):
     res_local = minimize(obj_local, x0=[2.0, 2.5], bounds=bb1_param_bounds,
                          method=kl_match_optim_method)
 
-    optim_kl = estimate_kl_divergence_copulas(samples_list, pdf_sg, bb1_copula_pdf_from_PITs(samples_list, res_full.x[0], res_full.x[1]))
-    optim_kl_loc = estimate_kl_divergence_copulas(samples_list, pdf_sg, bb1_copula_pdf_from_PITs(samples_list, res_loc.x[0], res_loc.x[1]))
-    optim_kl_local = estimate_kl_divergence_copulas(samples_list, pdf_sg, bb1_copula_pdf_from_PITs(samples_list, res_local.x[0], res_local.x[1]))
+    pdf_full = lambda u: bb1_copula_pdf_from_PITs(u, res_full.x[0], res_full.x[1])
+    pdf_loc = lambda u: bb1_copula_pdf_from_PITs(u, res_loc.x[0], res_loc.x[1])
+    pdf_local = lambda u: bb1_copula_pdf_from_PITs(u, res_local.x[0], res_local.x[1])
+
+    optim_kl = np.mean([
+        estimate_kl_divergence_copulas(u, pdf_sg, pdf_full) for u in samples_list
+    ])
+    optim_kl_loc = np.mean([
+        estimate_kl_divergence_copulas(u, pdf_sg, pdf_loc) for u in samples_list
+    ])
+    optim_kl_local = np.mean([
+        estimate_kl_divergence_copulas(u, pdf_sg, pdf_local) for u in samples_list
+    ])
 
 
     if verbose:
