@@ -7,6 +7,11 @@ import numpy as np
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from scipy.optimize import minimize
 from tqdm import tqdm
+from itertools import combinations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 from utils.copula_utils import (
     sim_sGumbel_PITs,
@@ -81,7 +86,7 @@ MODEL_FAMILY = {
     "sGumbel": "sGumbel",
 }
 
-def tune_bb1_params(samples_list, masks_list, pdf_sg, pdf_f):
+def tune_bb1_params(samples_list, masks_list, pdf_sg, pdf_f, verbose=False):
     """KL-match BB1 parameters to the survival Gumbel."""
     target_kl = np.mean([
         estimate_kl_divergence_copulas(u, pdf_sg, pdf_f)
@@ -126,6 +131,22 @@ def tune_bb1_params(samples_list, masks_list, pdf_sg, pdf_f):
                        method=kl_match_optim_method)
     res_local = minimize(obj_local, x0=[2.0, 2.5], bounds=bb1_param_bounds,
                          method=kl_match_optim_method)
+
+    optim_kl = estimate_kl_divergence_copulas(samples_list, pdf_sg, bb1_copula_pdf_from_PITs(samples_list, res_full.x[0], res_full.x[1]))
+    optim_kl_loc = estimate_kl_divergence_copulas(samples_list, pdf_sg, bb1_copula_pdf_from_PITs(samples_list, res_loc.x[0], res_loc.x[1]))
+    optim_kl_local = estimate_kl_divergence_copulas(samples_list, pdf_sg, bb1_copula_pdf_from_PITs(samples_list, res_local.x[0], res_local.x[1]))
+
+
+    if verbose:
+        logger.info(f"Tuned BB1 (oracle PITs): theta = {res_full.x[0]:.4f}, delta = {res_full.x[1]:.4f}")
+        logger.info(f"Target KL(sGumbel||f) oracle: {target_kl:.6f}")
+        logger.info(f"Optimized KL(sGumbel||bb1): {optim_kl:.6f}")
+        logger.info(f"Tuned BB1 (oracle PITs): theta = {res_loc.x[0]:.4f}, delta = {res_loc.x[1]:.4f}")
+        logger.info(f"Target KL(sGumbel||f) oracle: {target_loc:.6f}")
+        logger.info(f"Optimized KL(sGumbel||bb1): {optim_kl_loc:.6f}")
+        logger.info(f"Tuned BB1 (oracle PITs): theta = {res_full.x[0]:.4f}, delta = {res_full.x[1]:.4f}")
+        logger.info(f"Target KL(sGumbel||f) oracle: {target_local:.6f}")
+        logger.info(f"Optimized KL(sGumbel||bb1): {optim_kl_local:.6f}")
 
     return res_full.x, res_loc.x, res_local.x
 
@@ -204,7 +225,7 @@ def main():
     samples = [sim_sGumbel_PITs(n, theta_sGumbel) for _ in range(reps)]
     masks = [sample_region_mask(u, q_threshold, df=df) for u in samples]
 
-    (theta_bb1, delta_bb1), (theta_loc, delta_loc), (theta_local, delta_local) = tune_bb1_params(samples, masks, pdf_sg, pdf_f)
+    (theta_bb1, delta_bb1), (theta_loc, delta_loc), (theta_local, delta_local) = tune_bb1_params(samples, masks, pdf_sg, pdf_f, verbose=True)
 
     results = []
     with ProcessPoolExecutor() as exe:
