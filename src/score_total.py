@@ -6,9 +6,12 @@
 import numpy as np
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from tqdm import tqdm
+
+from src.utils.copula_utils import average_threshold, make_fixed_region_mask
 from utils.optimize_utils import minimize_with_tqdm
 from itertools import combinations
 import logging
+from scipy.stats import t as student_t
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -174,7 +177,8 @@ def simulate_one_rep_total(n, df, f_rho, g_rho, p_rho,
                            theta_bb1, delta_bb1,
                            theta_bb1_loc, delta_bb1_loc,
                            theta_bb1_local, delta_bb1_local,
-                           theta_sg):
+                           theta_sg,
+                           fixed_region_mask_sg, fixed_region_mask_t):
     """Simulate a single repetition without rolling windows."""
     from scipy.stats import multivariate_t, t as student_t
 
@@ -191,6 +195,13 @@ def simulate_one_rep_total(n, df, f_rho, g_rho, p_rho,
         student_t.ppf(oracle_sg[:,1], df),
     ])
     ecdf_sg = ecdf_transform(samples_sg)
+
+    reference_masks = {
+        "oracle": fixed_region_mask_t,
+        "ecdf": fixed_region_mask_t,  # use same mask!
+        "sGumbel_oracle": fixed_region_mask_sg,
+        "sGumbel_ecdf": fixed_region_mask_sg
+    }
 
     model_info = {
         "f": {"oracle": (oracle_p, {"rho": f_rho, "df": df}),
@@ -217,7 +228,7 @@ def simulate_one_rep_total(n, df, f_rho, g_rho, p_rho,
     for model, pits in model_info.items():
         fam = MODEL_FAMILY[model]
         for pit, (u, params) in pits.items():
-            w = sample_region_mask(u, q_threshold, df)
+            w = reference_masks[pit]
             log_v = score(u, fam, "LogS", **params)
             cs_v = score(u, fam, "CS", w=w, **params)
             cls_v = score(u, fam, "CLS", w=w, **params)
@@ -242,10 +253,20 @@ def simulate_one_rep_total(n, df, f_rho, g_rho, p_rho,
 def main():
     pdf_sg = lambda u: sGumbel_copula_pdf_from_PITs(u, theta_sGumbel)
     pdf_f = lambda u: student_t_copula_pdf_from_PITs(u, rho=f_rho, df=df)
-    samples = [sim_sGumbel_PITs(n, theta_sGumbel) for _ in range(reps)]
-    masks = [sample_region_mask(u, q_threshold, df=df) for u in samples]
 
-    (theta_bb1, delta_bb1), (theta_loc, delta_loc), (theta_local, delta_local) = tune_bb1_params(samples, masks, pdf_sg, pdf_f, verbose=True)
+    samples_sg = [sim_sGumbel_PITs(n, theta_sGumbel) for _ in range(reps)]
+    samples_t = [student_t.cdf(
+        np.random.multivariate_normal([0, 0], [[1, f_rho], [f_rho, 1]], size=n), df=df)
+        for _ in range(reps)]
+
+    avg_q_sg = average_threshold(samples_sg, q_threshold)
+    avg_q_t = average_threshold(samples_t, q_threshold)
+
+    fixed_region_mask_sg = make_fixed_region_mask(samples_sg[0], avg_q_sg)
+    fixed_region_mask_t = make_fixed_region_mask(samples_t[0], avg_q_t)
+
+
+    (theta_bb1, delta_bb1), (theta_loc, delta_loc), (theta_local, delta_local) = tune_bb1_params(samples_sg, [fixed_region_mask_sg] * reps, pdf_sg, pdf_f, verbose=True)
 
     results = []
     with ProcessPoolExecutor() as exe:
@@ -254,7 +275,8 @@ def main():
             theta_bb1, delta_bb1,
             theta_loc, delta_loc,
             theta_local, delta_local,
-            theta_sGumbel
+            theta_sGumbel,
+            fixed_region_mask_t, fixed_region_mask_sg,
         ) for _ in range(reps)]
         for fut in tqdm(as_completed(futures), total=reps, desc="Running simulations"):
             results.append(fut.result())

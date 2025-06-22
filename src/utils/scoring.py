@@ -11,6 +11,12 @@ from .copula_utils import (
     student_t_copula_pdf_from_PITs,
 )
 
+def _fw_bar(mF: np.ndarray, w: np.ndarray) -> float:
+    """Return P(Y not in R) given densities mF and 0/1 mask w."""
+    F_total    = np.sum(mF)             # ≈ ∫ f(y) dy  over sample points
+    F_outside  = np.sum(mF * (1 - w))   # mass outside region
+    F_outside  = max(F_outside, 1e-100)
+    return F_outside / F_total          # right-tail probability
 
 def LogS_sGumbel(u: np.ndarray, theta: float) -> float:
     """Return the logarithmic score for a survival Gumbel copula.
@@ -52,8 +58,7 @@ def CS_sGumbel(u: np.ndarray, theta: float, w: np.ndarray) -> float:
     mF = sGumbel_copula_pdf_from_PITs(u, theta)
     mF[mF == 0] = 1e-100
     log_mF = np.log(mF)
-    Fw_bar = np.sum(mF * w) / np.sum(w)
-    Fw_bar = max(Fw_bar, 1e-100)
+    Fw_bar = _fw_bar(mF, w)
     log_Fw_bar = np.log(Fw_bar)
     return float(np.sum(w * log_mF + (1 - w) * log_Fw_bar))
 
@@ -77,11 +82,9 @@ def CLS_sGumbel(u: np.ndarray, theta: float, w: np.ndarray) -> float:
     """
     mF = sGumbel_copula_pdf_from_PITs(u, theta)
     mF[mF == 0] = 1e-100
-    F_total = np.sum(mF)
-    F_outside = np.sum(mF * (1 - w))
-    F_outside = min(F_outside, F_total - 1e-100)
-    log_1_minus_Fw = np.log(F_outside / F_total + 1e-100)
-    return float(np.sum(w * (np.log(mF) - log_1_minus_Fw)))
+    Fw_bar = _fw_bar(mF, w)
+    log_1_minus = np.log(1 - Fw_bar)
+    return float(np.sum(w * (np.log(mF) - log_1_minus)))
 
 
 def LogS_bb1(u: np.ndarray, theta: float, delta: float) -> float:
@@ -128,8 +131,7 @@ def CS_bb1(u: np.ndarray, theta: float, delta: float, w: np.ndarray) -> float:
     mF = bb1_copula_pdf_from_PITs(u, theta, delta)
     mF[mF == 0] = 1e-100
     log_mF = np.log(mF)
-    Fw_bar = np.sum(mF * w) / np.sum(w)
-    Fw_bar = max(Fw_bar, 1e-100)
+    Fw_bar = _fw_bar(mF, w)
     log_Fw_bar = np.log(Fw_bar)
     return float(np.sum(w * log_mF + (1 - w) * log_Fw_bar))
 
@@ -155,11 +157,9 @@ def CLS_bb1(u: np.ndarray, theta: float, delta: float, w: np.ndarray) -> float:
     """
     mF = bb1_copula_pdf_from_PITs(u, theta, delta)
     mF[mF == 0] = 1e-100
-    F_total = np.sum(mF)
-    F_outside = np.sum(mF * (1 - w))
-    F_outside = min(F_outside, F_total - 1e-100)
-    log_1_minus_Fw = np.log(F_outside / F_total + 1e-100)
-    return float(np.sum(w * (np.log(mF) - log_1_minus_Fw)))
+    Fw_bar = _fw_bar(mF, w)
+    log_1_minus = np.log(1 - Fw_bar)
+    return float(np.sum(w * (np.log(mF) - log_1_minus)))
 
 
 def LogS_student_t_copula(u: np.ndarray, rho: float, df: float | int) -> float:
@@ -206,8 +206,7 @@ def CS_student_t_copula(u: np.ndarray, rho: float, df: float | int, w: np.ndarra
     mF = student_t_copula_pdf_from_PITs(u, rho, df)
     mF[mF == 0] = 1e-100
     log_mF = np.log(mF)
-    Fw_bar = np.sum(mF * w) / np.sum(w)
-    Fw_bar = max(Fw_bar, 1e-100)
+    Fw_bar = _fw_bar(mF, w)
     log_Fw_bar = np.log(Fw_bar)
     return float(np.sum(w * log_mF + (1 - w) * log_Fw_bar))
 
@@ -233,11 +232,9 @@ def CLS_student_t_copula(u: np.ndarray, rho: float, df: float | int, w: np.ndarr
     """
     mF = student_t_copula_pdf_from_PITs(u, rho, df)
     mF[mF == 0] = 1e-100
-    F_total = np.sum(mF)
-    F_outside = np.sum(mF * (1 - w))
-    F_outside = min(F_outside, F_total - 1e-100)
-    log_1_minus_Fw = np.log(F_outside / F_total + 1e-100)
-    return float(np.sum(w * (np.log(mF) - log_1_minus_Fw)))
+    Fw_bar = _fw_bar(mF, w)
+    log_1_minus = np.log(1 - Fw_bar)
+    return float(np.sum(w * (np.log(mF) - log_1_minus)))
 
 
 def estimate_kl_divergence_copulas(u_samples: np.ndarray, pdf_p, pdf_q) -> float:
@@ -283,13 +280,12 @@ def estimate_localized_kl(u_samples: np.ndarray, pdf_p, pdf_f, region_mask: np.n
     float
         Localized KL divergence.
     """
-    u_in_A = u_samples[region_mask.astype(bool)]
-    p_vals = pdf_p(u_in_A)
-    f_vals = pdf_f(u_in_A)
-    f_vals[f_vals == 0] = 1e-100
-    p_vals[p_vals == 0] = 1e-100
-    kl_vals = np.log(p_vals / f_vals)
-    return float(np.mean(kl_vals))
+    p = np.clip(pdf_p(u_samples), 1e-300, 1e300)
+    f = np.clip(pdf_f(u_samples), 1e-300, 1e300)
+    w = region_mask.astype(float)
+
+    log_ratio = np.log(p) - np.log(f)
+    return float((w * p * log_ratio).mean())
 
 
 def estimate_local_kl(u_samples: np.ndarray, pdf_p, pdf_f, region_mask: np.ndarray) -> float:
@@ -311,14 +307,18 @@ def estimate_local_kl(u_samples: np.ndarray, pdf_p, pdf_f, region_mask: np.ndarr
     float
         Weighted KL divergence.
     """
-    p_vals = pdf_p(u_samples)
-    f_vals = pdf_f(u_samples)
-    p_vals = np.clip(p_vals, 1e-100, 1e100)
-    f_vals = np.clip(f_vals, 1e-100, 1e100)
-    w_vals = region_mask.astype(float)
-    ratio = np.clip(p_vals / f_vals, 1e-12, 1e12)
-    kl_terms = w_vals * p_vals * np.log(ratio)
-    return float(np.mean(kl_terms))
+    p_vals = np.clip(pdf_p(u_samples), 1e-300, 1e300)
+    f_vals = np.clip(pdf_f(u_samples), 1e-300, 1e300)
+    log_ratio = np.log(p_vals) - np.log(f_vals)
+
+    w = region_mask.astype(float)  # 0/1 indicator
+    mass_in_R = w.mean()  # ≈ P(R) because E_P[w] = P(R)
+
+    if mass_in_R == 0.0:
+        raise ValueError("Region mask selects no samples; cannot estimate KL_R.")
+
+    # conditional expectation
+    return float((w * log_ratio).mean() / mass_in_R)
 
 
 def evaluate_mass_in_region(density: np.ndarray, W: np.ndarray) -> float:

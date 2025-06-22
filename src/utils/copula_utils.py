@@ -370,3 +370,22 @@ def inverse_ecdf(u: np.ndarray, original_resid: np.ndarray) -> np.ndarray:
     n = len(sorted_resid)
     indices = np.minimum((u * n).astype(int), n - 1)
     return sorted_resid[indices]
+
+def average_threshold(samples, q_threshold):
+    """
+    Average the (y1 + y2) q_threshold-quantile across many PIT samples.
+    Returns a scalar q_val.
+    """
+    q_vals = [
+        np.quantile(u[:, 0] + u[:, 1], q_threshold)   # tail boundary for this sample
+        for u in samples
+    ]
+    return float(np.mean(q_vals))
+
+
+def make_fixed_region_mask(reference_u, q_value):
+    """
+    Build a 0/1 mask from a single PIT sample using the *fixed* boundary q_value.
+    """
+    y1, y2 = reference_u[:, 0], reference_u[:, 1]
+    return ((y1 + y2) <= q_value).astype(int)
