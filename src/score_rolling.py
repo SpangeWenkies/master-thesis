@@ -12,6 +12,8 @@ from utils.copula_utils import (
     sim_sGumbel_PITs,
     sGumbel_copula_pdf_from_PITs,
     student_t_copula_pdf_from_PITs,
+    average_threshold,
+    make_fixed_region_mask,
 )
 from utils.scoring import (
     LogS_student_t_copula,
@@ -80,11 +82,7 @@ MODEL_FAMILY = {
     "sGumbel": "sGumbel",
 }
 
-def simulate_one_rep(n, df, f_rho, g_rho, p_rho,
-                     theta_bb1, delta_bb1,
-                     theta_bb1_localized, delta_bb1_localized,
-                     theta_bb1_local, delta_bb1_local,
-                     theta_sGumbel):
+def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
     """
         Helper function for simulating one repetition in multi-threading
 
@@ -122,12 +120,33 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho,
     oracle_u_p = np.empty((P, R, 2))
     ecdf_u_sGumbel = np.empty((P, R, 2))
     oracle_u_sGumbel = np.empty((P, R, 2))
+    mask_p = np.empty((P, R))
+    mask_sg = np.empty((P, R))
 
     for k, t in enumerate(range(R, R+P)):
         ecdf_u_p[k] = ecdf_transform(samples_p[t-R:t])
         oracle_u_p[k] = total_oracle_u_p[t-R:t]
         ecdf_u_sGumbel[k] = ecdf_transform(samples_sGumbel[t-R:t])
         oracle_u_sGumbel[k] = total_oracle_u_sGumbel[t - R:t]
+
+    # === KL match BB1 copulas for this repetition ===
+    pdf_sGumbel = lambda u: sGumbel_copula_pdf_from_PITs(u, theta_sGumbel)
+    pdf_f = lambda u: student_t_copula_pdf_from_PITs(u, rho=f_rho, df=df)
+    mask_full = sample_region_mask(total_oracle_u_sGumbel, q_threshold, df=df)
+    from score_total import tune_bb1_params
+    (
+        (theta_bb1, delta_bb1),
+        (theta_bb1_localized, delta_bb1_localized),
+        (theta_bb1_local, delta_bb1_local),
+    ) = tune_bb1_params([total_oracle_u_sGumbel], [mask_full], pdf_sGumbel, pdf_f)
+
+    avg_q_p = np.empty(P)
+    avg_q_sg = np.empty(P)
+    for k in range(P):
+        avg_q_p[k] = average_threshold([oracle_u_p[k]], q_threshold)
+        avg_q_sg[k] = average_threshold([oracle_u_sGumbel[k]], q_threshold)
+        mask_p[k] = make_fixed_region_mask(oracle_u_p[k], avg_q_p[k])
+        mask_sg[k] = make_fixed_region_mask(oracle_u_sGumbel[k], avg_q_sg[k])
 
 
     # Store rolling-window PITs and model parameters
@@ -166,6 +185,13 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho,
         },
     }
 
+    reference_masks = {
+        "oracle": mask_p,
+        "ecdf": mask_p,  # use oracle mask for ECDF PITs
+        "sGumbel_oracle": mask_sg,
+        "sGumbel_ecdf": mask_sg,
+    }
+
     score_vecs = {score: {model: {} for model in model_info} for score in score_types}
     score_sums = {score: {model: {} for model in model_info} for score in score_types}
 
@@ -179,7 +205,7 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho,
             cls_v = np.empty(P)
             for k in range(P):
                 window_u = u_dat[k]
-                w_win = sample_region_mask(window_u, q_threshold, df)
+                w_win = reference_masks[pit][k]
                 # Use the underlying scoring family when computing the scores
                 log_v[k] = score_vectors(window_u, family, "LogS", **params)
                 cs_v[k] = score_vectors(window_u, family, "CS", w=w_win, **params)
@@ -205,32 +231,12 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho,
 
 if __name__ == '__main__':
 
-    # === Obtain KL-matched BB1 parameters ===
-
-    pdf_sGumbel = lambda u: sGumbel_copula_pdf_from_PITs(u, theta_sGumbel)
-    pdf_f = lambda u: student_t_copula_pdf_from_PITs(u, rho=f_rho, df=df)
-
-    oracle_samples_list = [sim_sGumbel_PITs(n, theta_sGumbel) for _ in range(reps)]
-    oracle_masks_list = [sample_region_mask(u, q_threshold, df=df) for u in oracle_samples_list]
-
-    from score_total import tune_bb1_params
-
-    (theta_bb1_oracle, delta_bb1_oracle), (theta_bb1_localized_oracle, delta_bb1_localized_oracle), (theta_bb1_local_oracle, delta_bb1_local_oracle) = tune_bb1_params(
-        oracle_samples_list,
-        oracle_masks_list,
-        pdf_sGumbel,
-        pdf_f,
-    )
 
     results = []
 
     with ProcessPoolExecutor() as executor:
         futures = [executor.submit(
-            simulate_one_rep, n, df, f_rho, g_rho, p_rho,
-            theta_bb1_oracle, delta_bb1_oracle,
-            theta_bb1_localized_oracle, delta_bb1_localized_oracle,
-            theta_bb1_local_oracle, delta_bb1_local_oracle,
-            theta_sGumbel
+            simulate_one_rep, n, df, f_rho, g_rho, p_rho, theta_sGumbel
         ) for _ in range(reps)]
 
         for future in tqdm(as_completed(futures), total=reps, desc="Running simulations"):
