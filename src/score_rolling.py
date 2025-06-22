@@ -1,4 +1,4 @@
-# Rolling-window simulation script. Run with `python src/score_sim.py`
+# Rolling-window simulation script. Run with `python src/score_rolling.py`
 
 import numpy as np
 from concurrent.futures import ProcessPoolExecutor, as_completed
