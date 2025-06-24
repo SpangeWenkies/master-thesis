@@ -103,3 +103,28 @@ def perform_size_tests(p_values: np.ndarray, alpha_grid: np.ndarray | None = Non
     rejection_rates = np.array([(p_values < a).mean() for a in alpha_grid])
     discrepancies = rejection_rates - alpha_grid
     return alpha_grid, rejection_rates, discrepancies
+
+def dm_statistic(diff_vec: np.ndarray) -> float:
+    """Compute the Diebold--Mariano test statistic for ``diff_vec``.
+
+    Parameters
+    ----------
+    diff_vec : ndarray of shape (n,)
+        Difference vector of two score sequences.
+
+    Returns
+    -------
+    float
+        Diebold--Mariano statistic based on the sample mean and variance.
+    """
+    diff_vec = np.asarray(diff_vec)
+    if diff_vec.size == 0 or not np.isfinite(diff_vec).all():
+        print("Warning: DM statistic undefined for empty or non-finite vector")
+        return float("nan")
+
+    variance = diff_vec.var(ddof=1)
+    if variance == 0:
+        print("Warning: variance is zero in DM statistic computation")
+        return float("nan")
+
+    return float(diff_vec.mean() / np.sqrt(variance / diff_vec.size))

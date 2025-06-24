@@ -5,6 +5,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from itertools import combinations
 from scipy.stats import multivariate_t, t as student_t
 from tqdm import tqdm
+from matplotlib import pyplot as plt
 
 from utils.copula_utils import (
     ecdf_transform,
@@ -31,6 +32,7 @@ from utils.scoring import (
 )
 from utils.score_helpers import (
     t_test_per_replication,
+    dm_statistic,
 )
 from utils.plot_utils import (
     plot_size_curves,
@@ -167,14 +169,14 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
     for k in range(P):
         q_p = avg_q_p[k]
         q_sg = avg_q_sg[k]
-        fw_bar_dict["f"][k] = outside_prob_from_sample(sample_f, q_p)
-        fw_bar_dict["g"][k] = outside_prob_from_sample(sample_g, q_p)
-        fw_bar_dict["p"][k] = outside_prob_from_sample(sample_p, q_p)
-        fw_bar_dict["bb1"][k] = outside_prob_from_sample(sample_bb1, q_sg)
-        fw_bar_dict["bb1_localized"][k] = outside_prob_from_sample(sample_bb1_localized, q_sg)
-        fw_bar_dict["bb1_local"][k] = outside_prob_from_sample(sample_bb1_local, q_sg)
-        fw_bar_dict["f_for_KL_matching"][k] = outside_prob_from_sample(sample_f, q_sg)
-        fw_bar_dict["sGumbel"][k] = outside_prob_from_sample(sample_sg, q_sg)
+        fw_bar_dict["f"][k] = outside_prob_from_sample(sample_f, float(q_p))
+        fw_bar_dict["g"][k] = outside_prob_from_sample(sample_g, float(q_p))
+        fw_bar_dict["p"][k] = outside_prob_from_sample(sample_p, float(q_p))
+        fw_bar_dict["bb1"][k] = outside_prob_from_sample(sample_bb1, float(q_sg))
+        fw_bar_dict["bb1_localized"][k] = outside_prob_from_sample(sample_bb1_localized, float(q_sg))
+        fw_bar_dict["bb1_local"][k] = outside_prob_from_sample(sample_bb1_local, float(q_sg))
+        fw_bar_dict["f_for_KL_matching"][k] = outside_prob_from_sample(sample_f, float(q_sg))
+        fw_bar_dict["sGumbel"][k] = outside_prob_from_sample(sample_sg, float(q_sg))
 
     # Store rolling-window PITs and model parameters
     model_info = {
@@ -263,8 +265,7 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
     for score in score_types:
         for pit in pit_types:
             for key, diff_vec in diff_vecs[score][pit].items():
-                dm = diff_vec.mean() / np.sqrt(diff_vec.var(ddof=1) / diff_vec.size)
-                dm_stats[score][pit][key] = float(dm)
+                dm_stats[score][pit][key] = dm_statistic(diff_vec)
 
     return {
         "sums": score_sums,
@@ -336,6 +337,9 @@ if __name__ == '__main__':
         print(f"{score} DM p-values for first pair:")
         first_key = next(iter(results_dict))
         print(f"  {first_key}: {results_dict[first_key]}")
+        plt.plot(results_dict[first_key])
+        plt.show()
+
         break
 
 
