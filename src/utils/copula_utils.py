@@ -107,6 +107,49 @@ def sim_sGumbel_PITs(n: int, theta: float) -> np.ndarray:
     ''')
     return np.array(ro.r('u'))
 
+def sim_student_t_copula_PITs(n: int, rho: float, df: float | int) -> np.ndarray:
+    """Simulate PIT pairs from a Student-``t`` copula.
+
+    Parameters
+    ----------
+    n : int
+        Number of observations to simulate.
+    rho : float
+        Correlation parameter of the copula.
+    df : int | float
+        Degrees of freedom of the marginals.
+
+    Returns
+    -------
+    ndarray of shape (n, 2)
+        Simulated PIT pairs ``(U_1, U_2)``.
+    """
+    if n <= 0:
+        raise ValueError("n must be positive")
+    if df <= 0:
+        raise ValueError("df must be positive")
+    cov = np.array([[1, rho], [rho, 1]])
+    eps = multivariate_t.rvs(loc=[0, 0], shape=cov, df=df, size=n)
+    return student_t.cdf(eps, df)
+
+
+def sim_bb1_PITs(n: int, theta: float, delta: float) -> np.ndarray:
+    """Simulate PIT pairs from a BB1 copula using R's VineCopula package."""
+    if theta <= 0:
+        raise ValueError("theta must be positive")
+    if delta <= 0:
+        raise ValueError("delta must be positive")
+    numpy2ri.activate()
+    ro.globalenv['theta'] = theta
+    ro.globalenv['delta'] = delta
+    ro.globalenv['n'] = n
+    ro.r('''
+        library(VineCopula)
+        cop <- BiCop(family = 7, par = theta, par2 = delta)
+        u <- BiCopSim(n, cop)
+    ''')
+    return np.array(ro.r('u'))
+
 
 def sGumbel_copula_pdf_from_PITs(u: np.ndarray, theta: float) -> np.ndarray:
     """Evaluate the survival Gumbel copula density at PIT pairs.

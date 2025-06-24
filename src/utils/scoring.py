@@ -18,6 +18,12 @@ def _fw_bar(mF: np.ndarray, w: np.ndarray) -> float:
     F_outside  = max(F_outside, 1e-100)
     return F_outside / F_total          # right-tail probability
 
+def outside_prob_from_sample(sample: np.ndarray, q_val: float) -> float:
+    """Return ``P(U1 + U2 > q_val)`` estimated from PIT samples."""
+    if sample.ndim != 2 or sample.shape[1] != 2:
+        raise ValueError("sample must be of shape (n, 2)")
+    return float(np.mean(sample[:, 0] + sample[:, 1] > q_val))
+
 def LogS_sGumbel(u: np.ndarray, theta: float) -> float:
     """Return the logarithmic score for a survival Gumbel copula.
 
@@ -38,7 +44,7 @@ def LogS_sGumbel(u: np.ndarray, theta: float) -> float:
     return float(np.sum(np.log(mF)))
 
 
-def CS_sGumbel(u: np.ndarray, theta: float, w: np.ndarray) -> float:
+def CS_sGumbel(u: np.ndarray, theta: float, w: np.ndarray, Fw_bar: float | None = None) -> float:
     """Return the censored logarithmic score for a survival Gumbel copula.
 
     Parameters
@@ -58,12 +64,13 @@ def CS_sGumbel(u: np.ndarray, theta: float, w: np.ndarray) -> float:
     mF = sGumbel_copula_pdf_from_PITs(u, theta)
     mF[mF == 0] = 1e-100
     log_mF = np.log(mF)
-    Fw_bar = _fw_bar(mF, w)
+    if Fw_bar is None:              # if no precalc done
+        Fw_bar = _fw_bar(mF, w)
     log_Fw_bar = np.log(Fw_bar)
     return float(np.sum(w * log_mF + (1 - w) * log_Fw_bar))
 
 
-def CLS_sGumbel(u: np.ndarray, theta: float, w: np.ndarray) -> float:
+def CLS_sGumbel(u: np.ndarray, theta: float, w: np.ndarray, Fw_bar: float | None = None) -> float:
     """Return the conditional logarithmic score for a survival Gumbel copula.
 
     Parameters
@@ -82,7 +89,8 @@ def CLS_sGumbel(u: np.ndarray, theta: float, w: np.ndarray) -> float:
     """
     mF = sGumbel_copula_pdf_from_PITs(u, theta)
     mF[mF == 0] = 1e-100
-    Fw_bar = _fw_bar(mF, w)
+    if Fw_bar is None:      # If no precalc done
+        Fw_bar = _fw_bar(mF, w)
     log_1_minus = np.log(1 - Fw_bar)
     return float(np.sum(w * (np.log(mF) - log_1_minus)))
 
@@ -109,7 +117,7 @@ def LogS_bb1(u: np.ndarray, theta: float, delta: float) -> float:
     return float(np.sum(np.log(mF)))
 
 
-def CS_bb1(u: np.ndarray, theta: float, delta: float, w: np.ndarray) -> float:
+def CS_bb1(u: np.ndarray, theta: float, delta: float, w: np.ndarray, Fw_bar: float | None = None) -> float:
     """Return the censored logarithmic score for a BB1 copula.
 
     Parameters
@@ -131,12 +139,13 @@ def CS_bb1(u: np.ndarray, theta: float, delta: float, w: np.ndarray) -> float:
     mF = bb1_copula_pdf_from_PITs(u, theta, delta)
     mF[mF == 0] = 1e-100
     log_mF = np.log(mF)
-    Fw_bar = _fw_bar(mF, w)
+    if Fw_bar is None:  # If no precalc done
+        Fw_bar = _fw_bar(mF, w)
     log_Fw_bar = np.log(Fw_bar)
     return float(np.sum(w * log_mF + (1 - w) * log_Fw_bar))
 
 
-def CLS_bb1(u: np.ndarray, theta: float, delta: float, w: np.ndarray) -> float:
+def CLS_bb1(u: np.ndarray, theta: float, delta: float, w: np.ndarray,  Fw_bar: float | None = None) -> float:
     """Return the conditional logarithmic score for a BB1 copula.
 
     Parameters
@@ -157,7 +166,8 @@ def CLS_bb1(u: np.ndarray, theta: float, delta: float, w: np.ndarray) -> float:
     """
     mF = bb1_copula_pdf_from_PITs(u, theta, delta)
     mF[mF == 0] = 1e-100
-    Fw_bar = _fw_bar(mF, w)
+    if Fw_bar is None:  # If no precalc is done
+        Fw_bar = _fw_bar(mF, w)
     log_1_minus = np.log(1 - Fw_bar)
     return float(np.sum(w * (np.log(mF) - log_1_minus)))
 
@@ -184,7 +194,7 @@ def LogS_student_t_copula(u: np.ndarray, rho: float, df: float | int) -> float:
     return float(np.sum(np.log(mF)))
 
 
-def CS_student_t_copula(u: np.ndarray, rho: float, df: float | int, w: np.ndarray) -> float:
+def CS_student_t_copula(u: np.ndarray, rho: float, df: float | int, w: np.ndarray, Fw_bar: float | None = None) -> float:
     """Return the censored logarithmic score for a Student-t copula.
 
     Parameters
@@ -206,12 +216,13 @@ def CS_student_t_copula(u: np.ndarray, rho: float, df: float | int, w: np.ndarra
     mF = student_t_copula_pdf_from_PITs(u, rho, df)
     mF[mF == 0] = 1e-100
     log_mF = np.log(mF)
-    Fw_bar = _fw_bar(mF, w)
+    if Fw_bar is None:  # If no precalc is done
+        Fw_bar = _fw_bar(mF, w)
     log_Fw_bar = np.log(Fw_bar)
     return float(np.sum(w * log_mF + (1 - w) * log_Fw_bar))
 
 
-def CLS_student_t_copula(u: np.ndarray, rho: float, df: float | int, w: np.ndarray) -> float:
+def CLS_student_t_copula(u: np.ndarray, rho: float, df: float | int, w: np.ndarray, Fw_bar: float | None = None) -> float:
     """Return the conditional logarithmic score for a Student-t copula.
 
     Parameters
@@ -232,7 +243,8 @@ def CLS_student_t_copula(u: np.ndarray, rho: float, df: float | int, w: np.ndarr
     """
     mF = student_t_copula_pdf_from_PITs(u, rho, df)
     mF[mF == 0] = 1e-100
-    Fw_bar = _fw_bar(mF, w)
+    if Fw_bar is None:  # If no precalc is done
+        Fw_bar = _fw_bar(mF, w)
     log_1_minus = np.log(1 - Fw_bar)
     return float(np.sum(w * (np.log(mF) - log_1_minus)))
 

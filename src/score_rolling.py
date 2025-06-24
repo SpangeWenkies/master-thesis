@@ -9,7 +9,9 @@ from tqdm import tqdm
 from utils.copula_utils import (
     ecdf_transform,
     sample_region_mask,
+    sim_student_t_copula_PITs,
     sim_sGumbel_PITs,
+    sim_bb1_PITs,
     sGumbel_copula_pdf_from_PITs,
     student_t_copula_pdf_from_PITs,
     average_threshold,
@@ -25,18 +27,13 @@ from utils.scoring import (
     LogS_bb1,
     CS_bb1,
     CLS_bb1,
+    outside_prob_from_sample
 )
 from utils.score_helpers import (
-    div_by_stdev,
-    make_score_dicts,
     t_test_per_replication,
-    perform_size_tests,
 )
 from utils.plot_utils import (
     plot_size_curves,
-    plot_score_differences,
-    plot_aligned_kl_matched_scores,
-    plot_aligned_kl_matched_scores_cdf,
 )
 from utils.structure_defs import DiffKey
 from score_sim_config import (
@@ -54,9 +51,6 @@ from score_sim_config import (
     score_types,
     all_copula_models,
     copula_models_for_plots,
-    pair_to_keys,
-    pair_to_keys_size,
-    score_score_keys,
 )
 
 SCORE_FUNCS = {
@@ -106,8 +100,6 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
     # Define DGP1 (indep. student-t)
     samples_p = multivariate_t.rvs(loc=[0, 0], shape=[[1, 0], [0, 1]], df=df, size=n)
     total_oracle_u_p = student_t.cdf(samples_p, df)
-    # Mask each observation to include only the tail region in the scores
-    # (weights will later be recomputed per window)
 
     # Define DGP2 (survival Gumbel)
     total_oracle_u_sGumbel = sim_sGumbel_PITs(n, theta_sGumbel)
@@ -122,12 +114,22 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
     oracle_u_sGumbel = np.empty((P, R, 2))
     mask_p = np.empty((P, R))
     mask_sg = np.empty((P, R))
+    next_oracle_u_p = np.empty((P, 2))
+    next_ecdf_u_p = np.empty((P, 2))
+    next_oracle_u_sGumbel = np.empty((P, 2))
+    next_ecdf_u_sGumbel = np.empty((P, 2))
+    next_w_p = np.empty(P)
+    next_w_sg = np.empty(P)
 
     for k, t in enumerate(range(R, R+P)):
         ecdf_u_p[k] = ecdf_transform(samples_p[t-R:t])
         oracle_u_p[k] = total_oracle_u_p[t-R:t]
         ecdf_u_sGumbel[k] = ecdf_transform(samples_sGumbel[t-R:t])
         oracle_u_sGumbel[k] = total_oracle_u_sGumbel[t - R:t]
+        next_oracle_u_p[k] = total_oracle_u_p[t]
+        next_ecdf_u_p[k] = ecdf_transform(np.vstack([samples_p[t - R:t], samples_p[t]]))[-1]
+        next_oracle_u_sGumbel[k] = total_oracle_u_sGumbel[t]
+        next_ecdf_u_sGumbel[k] = ecdf_transform(np.vstack([samples_sGumbel[t - R:t], samples_sGumbel[t]]))[-1]
 
     # === KL match BB1 copulas for this repetition ===
     pdf_sGumbel = lambda u: sGumbel_copula_pdf_from_PITs(u, theta_sGumbel)
@@ -147,7 +149,32 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
         avg_q_sg[k] = average_threshold([oracle_u_sGumbel[k]], q_threshold)
         mask_p[k] = make_fixed_region_mask(oracle_u_p[k], avg_q_p[k])
         mask_sg[k] = make_fixed_region_mask(oracle_u_sGumbel[k], avg_q_sg[k])
+        next_w_p[k] = 1.0 if (next_oracle_u_p[k, 0] + next_oracle_u_p[k, 1]) <= avg_q_p[k] else 0.0
+        next_w_sg[k] = 1.0 if (next_oracle_u_sGumbel[k, 0] + next_oracle_u_sGumbel[k, 1]) <= avg_q_sg[k] else 0.0
 
+    MC_SIZE_FOR_FW_BAR = 10000
+    sample_f = sim_student_t_copula_PITs(MC_SIZE_FOR_FW_BAR, f_rho, df)
+    sample_g = sim_student_t_copula_PITs(MC_SIZE_FOR_FW_BAR, g_rho, df)
+    sample_p = sim_student_t_copula_PITs(MC_SIZE_FOR_FW_BAR, p_rho, df)
+    sample_sg = sim_sGumbel_PITs(MC_SIZE_FOR_FW_BAR, theta_sGumbel)
+    sample_bb1 = sim_bb1_PITs(MC_SIZE_FOR_FW_BAR, theta_bb1, delta_bb1)
+    sample_bb1_localized = sim_bb1_PITs(MC_SIZE_FOR_FW_BAR, theta_bb1_localized, delta_bb1_localized)
+    sample_bb1_local = sim_bb1_PITs(MC_SIZE_FOR_FW_BAR, theta_bb1_local, delta_bb1_local)
+
+    fw_bar_dict = {model: np.empty(P) for model in [
+        "f", "g", "p", "bb1", "bb1_localized", "bb1_local", "f_for_KL_matching", "sGumbel"]}
+
+    for k in range(P):
+        q_p = avg_q_p[k]
+        q_sg = avg_q_sg[k]
+        fw_bar_dict["f"][k] = outside_prob_from_sample(sample_f, q_p)
+        fw_bar_dict["g"][k] = outside_prob_from_sample(sample_g, q_p)
+        fw_bar_dict["p"][k] = outside_prob_from_sample(sample_p, q_p)
+        fw_bar_dict["bb1"][k] = outside_prob_from_sample(sample_bb1, q_sg)
+        fw_bar_dict["bb1_localized"][k] = outside_prob_from_sample(sample_bb1_localized, q_sg)
+        fw_bar_dict["bb1_local"][k] = outside_prob_from_sample(sample_bb1_local, q_sg)
+        fw_bar_dict["f_for_KL_matching"][k] = outside_prob_from_sample(sample_f, q_sg)
+        fw_bar_dict["sGumbel"][k] = outside_prob_from_sample(sample_sg, q_sg)
 
     # Store rolling-window PITs and model parameters
     model_info = {
@@ -186,10 +213,17 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
     }
 
     reference_masks = {
-        "oracle": mask_p,
-        "ecdf": mask_p,  # use oracle mask for ECDF PITs
-        "sGumbel_oracle": mask_sg,
-        "sGumbel_ecdf": mask_sg,
+        "oracle": next_w_p,
+        "ecdf": next_w_p,  # use oracle-based weight for ECDF PITs
+        "sGumbel_oracle": next_w_sg,
+        "sGumbel_ecdf": next_w_sg,
+    }
+
+    next_obs = {
+        "oracle": next_oracle_u_p,
+        "ecdf": next_ecdf_u_p,
+        "sGumbel_oracle": next_oracle_u_sGumbel,
+        "sGumbel_ecdf": next_ecdf_u_sGumbel,
     }
 
     score_vecs = {score: {model: {} for model in model_info} for score in score_types}
@@ -204,12 +238,14 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
             cs_v = np.empty(P)
             cls_v = np.empty(P)
             for k in range(P):
-                window_u = u_dat[k]
+                u_next = next_obs[pit][k]
                 w_win = reference_masks[pit][k]
-                # Use the underlying scoring family when computing the scores
-                log_v[k] = score_vectors(window_u, family, "LogS", **params)
-                cs_v[k] = score_vectors(window_u, family, "CS", w=w_win, **params)
-                cls_v[k] = score_vectors(window_u, family, "CLS", w=w_win, **params)
+                fw_bar = fw_bar_dict[model][k]
+                log_v[k] = score_vectors(u_next[np.newaxis, :], family, "LogS", **params)
+                cs_v[k] = score_vectors(u_next[np.newaxis, :], family, "CS", w=np.array([w_win]), Fw_bar=fw_bar,
+                                        **params)
+                cls_v[k] = score_vectors(u_next[np.newaxis, :], family, "CLS", w=np.array([w_win]), Fw_bar=fw_bar,
+                                         **params)
             for name, vec in zip(["LogS", "CS", "CLS"], [log_v, cs_v, cls_v]):
                 score_vecs[name][model][pit] = vec
                 score_sums[name][model][pit] = float(np.sum(vec))
@@ -223,10 +259,18 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
                 vec_b = score_vecs[score][model_b][pit]
                 diff_vecs[score][pit][DiffKey(pit, model_a, model_b)] = vec_a - vec_b
 
+    dm_stats = {score: {pit: {} for pit in pit_types} for score in score_types}
+    for score in score_types:
+        for pit in pit_types:
+            for key, diff_vec in diff_vecs[score][pit].items():
+                dm = diff_vec.mean() / np.sqrt(diff_vec.var(ddof=1) / diff_vec.size)
+                dm_stats[score][pit][key] = float(dm)
+
     return {
         "sums": score_sums,
         "vecs": score_vecs,
         "diff_vecs": diff_vecs,
+        "dm_stats": dm_stats,
     }
 
 if __name__ == '__main__':
@@ -265,6 +309,7 @@ if __name__ == '__main__':
 
     diffs = {score: {} for score in score_types}
     diff_mats = {score: {} for score in score_types}
+    dm_values = {score: {} for score in score_types}
 
     for pit in pit_types:
         for score in score_types:
@@ -279,51 +324,18 @@ if __name__ == '__main__':
                 diff_mats[score][key] = np.vstack([
                     res["diff_vecs"][score][pit][key] for res in results
                 ])
+                dm_values[score][key] = np.array([
+                    res["dm_stats"][score][pit][key] for res in results
+                ])
 
     for score, score_dict in diffs.items():
         for key in score_dict:
             print(f"{score}: {key}")
 
-    diff_keys = sorted({k for d in diffs.values() for k in d})
-    pair_names = {k: k.label for k in diff_keys}
+    for score, results_dict in dm_values.items():
+        print(f"{score} DM p-values for first pair:")
+        first_key = next(iter(results_dict))
+        print(f"  {first_key}: {results_dict[first_key]}")
+        break
 
-    # === Size tests ===
-    p_values = {
-        score: {k: t_test_per_replication(mat) for k, mat in mats.items()} for score, mats in diff_mats.items()
-    }
-    size_curves = {
-        score: {k: perform_size_tests(v) for k, v in pv.items()} for score, pv in p_values.items()
-    }
 
-    target_keys = [k for pair in pair_to_keys_size.values() for k in pair]
-    pair_labels_subset = {
-        key: f"{label} ({key.pit})"
-        for label, (oracle_suf, ecdf_suf) in pair_to_keys_size.items()
-        for suf in (oracle_suf, ecdf_suf)
-    }
-
-    for score in score_types:
-        subset = {
-            key: size_curves[score][key]
-            for key in target_keys
-            if key in size_curves[score]
-        }
-        plot_size_curves(subset, pair_labels_subset, plot_type="discrepancy", title=f"{score} Size Discrepancy")
-        plot_size_curves(subset, pair_labels_subset, plot_type="rejection", title=f"{score} Rejection Rates")
-
-    # For plotting divide CS and CLS by std dev
-    for score in score_types:
-        for key in list(diffs[score].keys()):
-            diffs[score][key] = div_by_stdev(str(key), diffs[score][key])
-
-    # Create score dictionaries for plotting
-    score_dicts = make_score_dicts(diffs, diff_keys, score_types)
-
-    print("Available keys:", [str(k) for k in score_dicts.keys()])
-
-    # --- Plots for score differences ---
-    plot_score_differences(score_dicts, score_types, pair_to_keys)
-
-    plot_aligned_kl_matched_scores(score_dicts, score_score_keys)
-
-    plot_aligned_kl_matched_scores_cdf(score_dicts, score_score_keys)
