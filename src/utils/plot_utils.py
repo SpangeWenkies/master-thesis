@@ -515,54 +515,29 @@ def plot_size_test_results(
         plt.tight_layout()
         plt.show()
 
-def plot_size_curves(
-    size_curve_dict: dict,
-    pair_labels: dict,
-    plot_type: str = "discrepancy",
-    title: str | None = None,
+def plot_dm_size_discrepancy(
+    alpha_grid: np.ndarray,
+    rates_oracle: np.ndarray,
+    rates_ecdf: np.ndarray,
+    score: str,
 ) -> None:
-    """Plot size discrepancy or rejection rate curves.
+    """Plot size discrepancy curves for oracle and ECDF DM tests."""
 
-    Parameters
-    ----------
-    size_curve_dict : dict
-        Mapping DiffKey -> (alpha_grid, rejection_rates, discrepancies) where each
-        element is an ndarray of shape (m,).
-    pair_labels : dict
-        Mapping DiffKey -> human readable label.
-    plot_type : {"discrepancy", "rejection"}, default "discrepancy"
-        Selects the quantity plotted on the y-axis.
-    title : str, optional
-        Title for the plot.
+    discrepancy_oracle = rates_oracle - alpha_grid
+    discrepancy_ecdf = rates_ecdf - alpha_grid
 
-    Returns
-    -------
-    None
-        The plot is shown on screen.
-    """
-
-    if plot_type not in {"discrepancy", "rejection"}:
-        raise ValueError("plot_type must be 'discrepancy' or 'rejection'")
-
-    fig, ax = plt.subplots(figsize=(6, 4))
-
-    for key, (alpha_grid, rejection_rates, discrepancies) in size_curve_dict.items():
-        label = pair_labels.get(key, key)
-        y = discrepancies if plot_type == "discrepancy" else rejection_rates
-        ax.plot(alpha_grid, y, marker="o", label=label)
-
-    ax.set_xlabel("alpha")
-    if plot_type == "discrepancy":
-        ax.set_ylabel("rejection rate - alpha")
-        ax.axhline(0, color="gray", linestyle="--", linewidth=1)
-    else:
-        ax.set_ylabel("rejection rate")
-        ax.plot([0, 1], [0, 1], "--", color="gray", linewidth=1)
-
-    if title is None:
-        title = "Size Curves"
-    ax.set_title(title)
-    ax.legend()
-    ax.grid(True)
+    plt.figure(figsize=(6, 4))
+    plt.plot(alpha_grid, discrepancy_oracle, marker="o", label="oracle")
+    plt.plot(alpha_grid, discrepancy_ecdf, marker="s", label="ecdf")
+    plt.plot(alpha_grid, 1.96 * np.sqrt(alpha_grid * (1 - alpha_grid) / len(discrepancy_oracle)), color="gray",
+             linestyle="--", linewidth=1)
+    plt.plot(alpha_grid, -1.96 * np.sqrt(alpha_grid * (1 - alpha_grid) / len(discrepancy_oracle)), color="gray",
+             linestyle="--", linewidth=1)
+    plt.axhline(0, color="gray", linestyle="--", linewidth=1)
+    plt.xlabel("alpha")
+    plt.ylabel("rejection rate - alpha")
+    plt.title(f"Size discrepancy (two-sided DM, {score}, f - g)")
+    plt.legend()
+    plt.grid(True)
     plt.tight_layout()
     plt.show()

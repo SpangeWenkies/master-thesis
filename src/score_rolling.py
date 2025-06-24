@@ -35,7 +35,7 @@ from utils.score_helpers import (
     dm_statistic,
 )
 from utils.plot_utils import (
-    plot_size_curves,
+    plot_dm_size_discrepancy,
 )
 from utils.structure_defs import DiffKey
 from score_sim_config import (
@@ -352,7 +352,10 @@ if __name__ == '__main__':
     key_ecdf_fg = DiffKey("ecdf", "f", "g")
 
     for score in score_types:
-        if key_oracle_fg in dm_rejection_rates[score] and key_ecdf_fg in dm_rejection_rates[score]:
+        if (
+                key_oracle_fg in dm_rejection_rates[score]
+                and key_ecdf_fg in dm_rejection_rates[score]
+        ):
             rates_oracle = dm_rejection_rates[score][key_oracle_fg]["two-sided"]
             rates_ecdf = dm_rejection_rates[score][key_ecdf_fg]["two-sided"]
             plt.figure()
@@ -366,4 +369,9 @@ if __name__ == '__main__':
             plt.grid(True)
             plt.show()
 
-
+            plot_dm_size_discrepancy(
+                alpha_grid,
+                rates_oracle,
+                rates_ecdf,
+                score,
+            )
