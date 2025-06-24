@@ -348,18 +348,22 @@ if __name__ == '__main__':
                 "two-sided": two_sided,
             }
 
-    # Example: print and plot rejection rates for the first score/pair
-    for score, score_dict in dm_rejection_rates.items():
-        first_key = next(iter(score_dict))
-        print(f"Rejection rates for {score}, pair {first_key}:")
-        print("  Right tail:", score_dict[first_key]["right"])
-        print("  Left tail:", score_dict[first_key]["left"])
-        print("  Two-sided:", score_dict[first_key]["two-sided"])
-        plt.plot(alpha_grid, score_dict[first_key]["two-sided"], label="two-sided")
-        plt.plot(alpha_grid, score_dict[first_key]["right"], label="right")
-        plt.plot(alpha_grid, score_dict[first_key]["left"], label="left")
-        plt.legend()
-        plt.show()
-        break
+    key_oracle_fg = DiffKey("oracle", "f", "g")
+    key_ecdf_fg = DiffKey("ecdf", "f", "g")
+
+    for score in score_types:
+        if key_oracle_fg in dm_rejection_rates[score] and key_ecdf_fg in dm_rejection_rates[score]:
+            rates_oracle = dm_rejection_rates[score][key_oracle_fg]["two-sided"]
+            rates_ecdf = dm_rejection_rates[score][key_ecdf_fg]["two-sided"]
+            plt.figure()
+            plt.plot(alpha_grid, rates_oracle, label="oracle")
+            plt.plot(alpha_grid, rates_ecdf, label="ecdf")
+            plt.plot(alpha_grid, alpha_grid, "--", color="gray", label="alpha = rejection rate")
+            plt.xlabel("alpha")
+            plt.ylabel("rejection rate")
+            plt.title(f"DM test size curves ({score}, f - g)")
+            plt.legend()
+            plt.grid(True)
+            plt.show()
 
 

@@ -2,8 +2,8 @@ from utils.structure_defs import DiffKey
 # Magic numbers
 iSeed = 12085278    # Seed
 
-R = 100    # in-sample window size
-P = 100    # out of sample evaluation period size
+R = 250    # in-sample window size
+P = 250    # out of sample evaluation period size
 n = R + P   # total path size (n=250 is year of observations where the market is open)
 df = 5  # degrees of freedom for student-t distributions
 f_rho = -0.3    # candidate correlation coefficient for bivariate student-t copula
