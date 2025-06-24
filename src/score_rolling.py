@@ -3,7 +3,7 @@
 import numpy as np
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from itertools import combinations
-from scipy.stats import multivariate_t, t as student_t
+from scipy.stats import multivariate_t, t as student_t, norm
 from tqdm import tqdm
 from matplotlib import pyplot as plt
 
@@ -333,13 +333,33 @@ if __name__ == '__main__':
         for key in score_dict:
             print(f"{score}: {key}")
 
-    for score, results_dict in dm_values.items():
-        print(f"{score} DM p-values for first pair:")
-        first_key = next(iter(results_dict))
-        print(f"  {first_key}: {results_dict[first_key]}")
-        plt.plot(results_dict[first_key])
-        plt.show()
+    # Compute rejection rates for a grid of alpha levels
+    alpha_grid = np.linspace(0.01, 0.2, 20)
+    dm_rejection_rates = {score: {} for score in score_types}
 
+    for score, results_dict in dm_values.items():
+        for key, stats_vec in results_dict.items():
+            right = np.array([(stats_vec > norm.ppf(1 - a)).mean() for a in alpha_grid])
+            left = np.array([(stats_vec < norm.ppf(a)).mean() for a in alpha_grid])
+            two_sided = np.array([(np.abs(stats_vec) > norm.ppf(1 - a / 2)).mean() for a in alpha_grid])
+            dm_rejection_rates[score][key] = {
+                "right": right,
+                "left": left,
+                "two-sided": two_sided,
+            }
+
+    # Example: print and plot rejection rates for the first score/pair
+    for score, score_dict in dm_rejection_rates.items():
+        first_key = next(iter(score_dict))
+        print(f"Rejection rates for {score}, pair {first_key}:")
+        print("  Right tail:", score_dict[first_key]["right"])
+        print("  Left tail:", score_dict[first_key]["left"])
+        print("  Two-sided:", score_dict[first_key]["two-sided"])
+        plt.plot(alpha_grid, score_dict[first_key]["two-sided"], label="two-sided")
+        plt.plot(alpha_grid, score_dict[first_key]["right"], label="right")
+        plt.plot(alpha_grid, score_dict[first_key]["left"], label="left")
+        plt.legend()
+        plt.show()
         break
 
 
