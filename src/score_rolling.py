@@ -15,20 +15,15 @@ from utils.copula_utils import (
     sim_bb1_PITs,
     sGumbel_copula_pdf_from_PITs,
     student_t_copula_pdf_from_PITs,
+    bb1_copula_pdf_from_PITs,
     average_threshold,
     make_fixed_region_mask,
 )
 from utils.scoring import (
-    LogS_student_t_copula,
-    CS_student_t_copula,
-    CLS_student_t_copula,
-    LogS_sGumbel,
-    CS_sGumbel,
-    CLS_sGumbel,
-    LogS_bb1,
-    CS_bb1,
-    CLS_bb1,
-    outside_prob_from_sample
+    LogS,
+    CS,
+    CLS,
+    outside_prob_from_sample,
 )
 from utils.score_helpers import (
     div_by_stdev,
@@ -58,16 +53,18 @@ from score_sim_config import (
     score_score_keys,
 )
 
-SCORE_FUNCS = {
-    "student_t": {"LogS": LogS_student_t_copula,
-                  "CS":   CS_student_t_copula,
-                  "CLS":  CLS_student_t_copula},
-    "sGumbel":   {"LogS": LogS_sGumbel,
-                  "CS":   CS_sGumbel,
-                  "CLS":  CLS_sGumbel},
-    "bb1":       {"LogS": LogS_bb1,
-                  "CS":   CS_bb1,
-                  "CLS":  CLS_bb1}
+SCORE_FUNCS = {"LogS": LogS, "CS": CS, "CLS": CLS}
+
+PDF_FUNCS = {
+    "student_t": student_t_copula_pdf_from_PITs,
+    "sGumbel": sGumbel_copula_pdf_from_PITs,
+    "bb1": bb1_copula_pdf_from_PITs,
+}
+
+PDF_PARAMS = {
+    "student_t": ["rho", "df"],
+    "sGumbel": ["theta"],
+    "bb1": ["theta", "delta"],
 }
 
 MODEL_FAMILY = {
@@ -93,14 +90,27 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
         """
 
     def score_vectors(u, model_id, score_type, **kwargs):
-        """
-        u          : (n, 2) array of PITs or pseudo-obs
-        model_id   : 'student_t' | 'sGumbel' | 'bb1'            (string)
-        score_type : 'LogS' | 'CS' | 'CLS'                     (string)
-        kwargs     : parameters that the specific scorer needs
-        """
-        scorer = SCORE_FUNCS[model_id][score_type]
-        return scorer(u, **kwargs)  # <-- ALWAYS utils.py!
+        """Return score value for ``u`` using the generic scoring functions."""
+
+        # Select scoring and density functions
+        score_func = SCORE_FUNCS[score_type]
+        pdf_func = PDF_FUNCS[model_id]
+
+        # Separate parameters for the PDF and the scoring rule
+        pdf_kwargs = {k: kwargs[k] for k in PDF_PARAMS[model_id] if k in kwargs}
+        w = kwargs.get("w")
+        fw_bar = kwargs.get("Fw_bar")
+
+        mF = pdf_func(u, **pdf_kwargs)
+
+        if score_type == "LogS":
+            return float(np.sum(score_func(mF)))
+        elif score_type == "CS":
+            return float(np.sum(score_func(mF, w, fw_bar)))
+        elif score_type == "CLS":
+            return float(np.sum(score_func(mF, w, fw_bar)))
+        else:
+            raise ValueError(f"Unknown score_type: {score_type}")
 
     # Define DGP1 (indep. student-t)
     samples_p = multivariate_t.rvs(loc=[0, 0], shape=[[1, 0], [0, 1]], df=df, size=n)
