@@ -6,17 +6,17 @@ from itertools import combinations
 from scipy.stats import multivariate_t, t as student_t, norm
 from tqdm import tqdm
 from matplotlib import pyplot as plt
-from utils.optimize_utils import tune_bb1_params
+from utils.optimize_utils import tune_sClayton_params
 
 from utils.copula_utils import (
     ecdf_transform,
     sample_region_mask,
     sim_student_t_copula_PITs,
     sim_sGumbel_PITs,
-    sim_bb1_PITs,
+    sim_sClayton_PITs,
     sGumbel_copula_pdf_from_PITs,
     student_t_copula_pdf_from_PITs,
-    bb1_copula_pdf_from_PITs,
+    sClayton_copula_pdf_from_PITs,
     average_threshold,
     make_fixed_region_mask,
 )
@@ -59,22 +59,22 @@ SCORE_FUNCS = {"LogS": LogS, "CS": CS, "CLS": CLS}
 PDF_FUNCS = {
     "student_t": student_t_copula_pdf_from_PITs,
     "sGumbel": sGumbel_copula_pdf_from_PITs,
-    "bb1": bb1_copula_pdf_from_PITs,
+    "sClayton": sClayton_copula_pdf_from_PITs,
 }
 
 PDF_PARAMS = {
     "student_t": ["rho", "df"],
     "sGumbel": ["theta"],
-    "bb1": ["theta", "delta"],
+    "sClayton": ["theta"],
 }
 
 MODEL_FAMILY = {
     "f": "student_t",
     "g": "student_t",
     "p": "student_t",
-    "bb1": "bb1",
-    "bb1_localized": "bb1",
-    "bb1_local": "bb1",
+    "sClayton": "sClayton",
+    "sClayton_localized": "sClayton",
+    "sClayton_local": "sClayton",
     "f_for_KL_matching": "student_t",
     "sGumbel": "sGumbel",
 }
@@ -147,7 +147,7 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
         next_oracle_u_sGumbel[k] = total_oracle_u_sGumbel[t]
         next_ecdf_u_sGumbel[k] = ecdf_transform(np.vstack([samples_sGumbel[t - R:t], samples_sGumbel[t]]))[-1]
 
-    # === KL match BB1 copulas for this repetition ===
+    # === KL match sClayton copulas for this repetition ===
     pdf_sGumbel = lambda u: sGumbel_copula_pdf_from_PITs(u, theta_sGumbel)
     pdf_f = lambda u: student_t_copula_pdf_from_PITs(u, rho=f_rho, df=df)
     mask_full = sample_region_mask(total_oracle_u_sGumbel, q_threshold, df=df)
@@ -163,22 +163,22 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
         next_w_sg[k] = 1.0 if (next_oracle_u_sGumbel[k, 0] + next_oracle_u_sGumbel[k, 1]) <= avg_q_sg[k] else 0.0
 
     (
-        (theta_bb1, delta_bb1),
-        (theta_bb1_localized, delta_bb1_localized),
-        (theta_bb1_local, delta_bb1_local),
-    ) = tune_bb1_params(oracle_u_sGumbel, mask_sg, pdf_sGumbel, pdf_f)
+        theta_sClayton,
+        theta_sClayton_localized,
+        theta_sClayton_local,
+    ) = tune_sClayton_params(oracle_u_sGumbel, mask_sg, pdf_sGumbel, pdf_f)
 
     MC_SIZE_FOR_FW_BAR = 10000
     sample_f = sim_student_t_copula_PITs(MC_SIZE_FOR_FW_BAR, f_rho, df)
     sample_g = sim_student_t_copula_PITs(MC_SIZE_FOR_FW_BAR, g_rho, df)
     sample_p = sim_student_t_copula_PITs(MC_SIZE_FOR_FW_BAR, p_rho, df)
     sample_sg = sim_sGumbel_PITs(MC_SIZE_FOR_FW_BAR, theta_sGumbel)
-    sample_bb1 = sim_bb1_PITs(MC_SIZE_FOR_FW_BAR, theta_bb1, delta_bb1)
-    sample_bb1_localized = sim_bb1_PITs(MC_SIZE_FOR_FW_BAR, theta_bb1_localized, delta_bb1_localized)
-    sample_bb1_local = sim_bb1_PITs(MC_SIZE_FOR_FW_BAR, theta_bb1_local, delta_bb1_local)
+    sample_sClayton = sim_sClayton_PITs(MC_SIZE_FOR_FW_BAR, theta_sClayton)
+    sample_sClayton_localized = sim_sClayton_PITs(MC_SIZE_FOR_FW_BAR, theta_sClayton_localized)
+    sample_sClayton_local = sim_sClayton_PITs(MC_SIZE_FOR_FW_BAR, theta_sClayton_local)
 
     fw_bar_dict = {model: np.empty(P) for model in [
-        "f", "g", "p", "bb1", "bb1_localized", "bb1_local", "f_for_KL_matching", "sGumbel"]}
+        "f", "g", "p", "sClayton", "sClayton_localized", "sClayton_local", "f_for_KL_matching", "sGumbel"]}
 
     for k in range(P):
         q_p = avg_q_p[k]
@@ -186,9 +186,9 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
         fw_bar_dict["f"][k] = outside_prob_from_sample(sample_f, float(q_p))
         fw_bar_dict["g"][k] = outside_prob_from_sample(sample_g, float(q_p))
         fw_bar_dict["p"][k] = outside_prob_from_sample(sample_p, float(q_p))
-        fw_bar_dict["bb1"][k] = outside_prob_from_sample(sample_bb1, float(q_sg))
-        fw_bar_dict["bb1_localized"][k] = outside_prob_from_sample(sample_bb1_localized, float(q_sg))
-        fw_bar_dict["bb1_local"][k] = outside_prob_from_sample(sample_bb1_local, float(q_sg))
+        fw_bar_dict["sClayton"][k] = outside_prob_from_sample(sample_sClayton, float(q_sg))
+        fw_bar_dict["sClayton_localized"][k] = outside_prob_from_sample(sample_sClayton_localized, float(q_sg))
+        fw_bar_dict["sClayton_local"][k] = outside_prob_from_sample(sample_sClayton_local, float(q_sg))
         fw_bar_dict["f_for_KL_matching"][k] = outside_prob_from_sample(sample_f, float(q_sg))
         fw_bar_dict["sGumbel"][k] = outside_prob_from_sample(sample_sg, float(q_sg))
 
@@ -206,17 +206,17 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
             "oracle": (oracle_u_p, {"rho": p_rho, "df": df}),
             "ecdf": (ecdf_u_p, {"rho": p_rho, "df": df}),
         },
-        "bb1": {
-            "oracle": (oracle_u_sGumbel, {"theta": theta_bb1, "delta": delta_bb1}),
-            "ecdf": (ecdf_u_sGumbel, {"theta": theta_bb1, "delta": delta_bb1}),
+        "sClayton": {
+            "oracle": (oracle_u_sGumbel, {"theta": theta_sClayton}),
+            "ecdf": (ecdf_u_sGumbel, {"theta": theta_sClayton}),
         },
-        "bb1_localized": {
-            "oracle": (oracle_u_sGumbel, {"theta": theta_bb1_localized, "delta": delta_bb1_localized}),
-            "ecdf": (ecdf_u_sGumbel, {"theta": theta_bb1_localized, "delta": delta_bb1_localized}),
+        "sClayton_localized": {
+            "oracle": (oracle_u_sGumbel, {"theta": theta_sClayton_localized}),
+            "ecdf": (ecdf_u_sGumbel, {"theta": theta_sClayton_localized}),
         },
-        "bb1_local": {
-            "oracle": (oracle_u_sGumbel, {"theta": theta_bb1_local, "delta": delta_bb1_local}),
-            "ecdf": (ecdf_u_sGumbel, {"theta": theta_bb1_local, "delta": delta_bb1_local}),
+        "sClayton_local": {
+            "oracle": (oracle_u_sGumbel, {"theta": theta_sClayton_local}),
+            "ecdf": (ecdf_u_sGumbel, {"theta": theta_sClayton_local}),
         },
         "f_for_KL_matching": {
             "oracle": (oracle_u_sGumbel, {"rho": f_rho, "df": df}),
@@ -342,7 +342,7 @@ if __name__ == '__main__':
                     print(f"Key error for {score}: {model}, {pit}")
 
     # Get all pairwise model combinations (excluding self-pairs)
-    model_pairs = list(combinations(copula_models_for_plots, 2))  # [('f', 'g'), ('f', 'p'), ..., ('bb1', 'f_for_KL_matching')]
+    model_pairs = list(combinations(copula_models_for_plots, 2))  # [('f', 'g'), ('f', 'p'), ..., ('sClayton', 'f_for_KL_matching')]
 
     print(model_pairs)
 
@@ -447,7 +447,7 @@ if __name__ == '__main__':
                 label,
             )
 
-    # === Plot score differences for bb1 - f to visually inspect results ===
+    # === Plot score differences for sClayton - f to visually inspect results ===
     # for sc in score_types:
     #     for key in list(diffs[sc].keys()):
     #         diffs[sc][key] = div_by_stdev(str(key), diffs[sc][key])

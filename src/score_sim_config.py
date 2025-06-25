@@ -18,8 +18,8 @@ sClayton_param_bounds = [(0.001, 15)]
 
 pit_types = ["oracle", "ecdf"]
 score_types = ["LogS", "CS", "CLS"]
-all_copula_models = ["f", "g", "p", "bb1", "bb1_local", "bb1_localized", "f_for_KL_matching", "sGumbel"]
-copula_models_for_plots = ["f", "g", "p", "bb1", "bb1_local", "bb1_localized", "f_for_KL_matching",]
+all_copula_models = ["f", "g", "p", "sClayton", "sClayton_local", "sClayton_localized", "f_for_KL_matching", "sGumbel"]
+copula_models_for_plots = ["f", "g", "p", "sClayton", "sClayton_local", "sClayton_localized", "f_for_KL_matching",]
 pair_to_keys = {
     "f - g": (DiffKey("oracle", "f", "g"), DiffKey("ecdf", "f", "g")),
     "f - p": (DiffKey("oracle", "f", "p"), DiffKey("ecdf", "f", "p")),
@@ -29,8 +29,8 @@ pair_to_keys_size = {
     "f - g": (DiffKey("oracle", "f", "g"), DiffKey("ecdf", "f", "g"))
 }
 score_score_keys = [
-    ("LogS",  "bb1 - f_for_KL_matching", DiffKey("oracle", "bb1", "f_for_KL_matching"), DiffKey("ecdf", "bb1", "f_for_KL_matching")),
-    ("CS",    "bb1_localized - f_for_KL_matching", DiffKey("oracle", "bb1_localized", "f_for_KL_matching"), DiffKey("ecdf", "bb1_localized", "f_for_KL_matching")),
-    ("CLS",   "bb1_local - f_for_KL_matching", DiffKey("oracle", "bb1_local", "f_for_KL_matching"), DiffKey("ecdf", "bb1_local", "f_for_KL_matching")),
+    ("LogS",  "sClayton - f_for_KL_matching", DiffKey("oracle", "sClayton", "f_for_KL_matching"), DiffKey("ecdf", "sClayton", "f_for_KL_matching")),
+    ("CS",    "sClayton_localized - f_for_KL_matching", DiffKey("oracle", "sClayton_localized", "f_for_KL_matching"), DiffKey("ecdf", "sClayton_localized", "f_for_KL_matching")),
+    ("CLS",   "sClayton_local - f_for_KL_matching", DiffKey("oracle", "sClayton_local", "f_for_KL_matching"), DiffKey("ecdf", "sClayton_local", "f_for_KL_matching")),
 ]
 
