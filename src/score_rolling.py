@@ -6,6 +6,7 @@ from itertools import combinations
 from scipy.stats import multivariate_t, t as student_t, norm
 from tqdm import tqdm
 from matplotlib import pyplot as plt
+from utils.optimize_utils import tune_bb1_params
 
 from utils.copula_utils import (
     ecdf_transform,
@@ -150,7 +151,6 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
     pdf_sGumbel = lambda u: sGumbel_copula_pdf_from_PITs(u, theta_sGumbel)
     pdf_f = lambda u: student_t_copula_pdf_from_PITs(u, rho=f_rho, df=df)
     mask_full = sample_region_mask(total_oracle_u_sGumbel, q_threshold, df=df)
-    from score_total import tune_bb1_params
 
     avg_q_p = np.empty(P)
     avg_q_sg = np.empty(P)
@@ -267,26 +267,26 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
                 score_sums[name][model][pit] = float(np.sum(vec))
 
     # Print summary statistics for each score/model/pit combination
-    zero_rate_threshold = 0.1
-    for score, model_dict in score_vecs.items():
-        for model, pit_dict in model_dict.items():
-            for pit, vec in pit_dict.items():
-                summary_mean = float(np.mean(vec))
-                summary_std = float(np.std(vec))
-                summary_min = float(np.min(vec))
-                summary_max = float(np.max(vec))
-                zero_fraction = float(np.sum(vec == 0) / len(vec))
-                print(
-                    f"Summary for {score}, {model}, {pit}: "
-                    f"mean={summary_mean:.4f}, "
-                    f"range=({summary_min:.4f}, {summary_max:.4f}), "
-                    f"std={summary_std:.4f}"
-                )
-                if zero_fraction > zero_rate_threshold:
-                    print(
-                        f"  Warning: {zero_fraction:.0%} of entries are zero"
-                    )
-    print("----------------------------------------------------------------------------")
+    # zero_rate_threshold = 0.1
+    # for score, model_dict in score_vecs.items():
+    #     for model, pit_dict in model_dict.items():
+    #         for pit, vec in pit_dict.items():
+    #             summary_mean = float(np.mean(vec))
+    #             summary_std = float(np.std(vec))
+    #             summary_min = float(np.min(vec))
+    #             summary_max = float(np.max(vec))
+    #             zero_fraction = float(np.sum(vec == 0) / len(vec))
+    #             print(
+    #                 f"Summary for {score}, {model}, {pit}: "
+    #                 f"mean={summary_mean:.4f}, "
+    #                 f"range=({summary_min:.4f}, {summary_max:.4f}), "
+    #                 f"std={summary_std:.4f}"
+    #             )
+    #             if zero_fraction > zero_rate_threshold:
+    #                 print(
+    #                     f"  Warning: {zero_fraction:.0%} of entries are zero"
+    #                 )
+    # print("----------------------------------------------------------------------------")
 
     model_pairs = list(combinations(copula_models_for_plots, 2))
     diff_vecs = {score: {pit: {} for pit in pit_types} for score in score_types}
@@ -315,144 +315,144 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
 if __name__ == '__main__':
 
     simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel)
-    # results = []
-    #
-    # with ProcessPoolExecutor() as executor:
-    #     futures = [executor.submit(
-    #         simulate_one_rep, n, df, f_rho, g_rho, p_rho, theta_sGumbel
-    #     ) for _ in range(reps)]
-    #
-    #     for future in tqdm(as_completed(futures), total=reps, desc="Running simulations"):
-    #         results.append(future.result())
-    #
-    # print("Sample result keys:")
-    # for k in results[0].keys():
-    #     print(" ", k)
-    #
-    # # Store extracted vectors in a dictionary: e.g., vecs["LogS"]["f"]["oracle"]
-    # vecs = {score: {model: {} for model in all_copula_models} for score in score_types}
-    # for score in score_types:
-    #     for model in all_copula_models:
-    #         for pit in pit_types:
-    #             try:
-    #                 vecs[score][model][pit] = np.array([
-    #                     res["sums"][score][model][pit] for res in results
-    #                 ])
-    #             except KeyError:
-    #                 print(f"Key error for {score}: {model}, {pit}")
-    #
-    # # Get all pairwise model combinations (excluding self-pairs)
-    # model_pairs = list(combinations(copula_models_for_plots, 2))  # [('f', 'g'), ('f', 'p'), ..., ('bb1', 'f_for_KL_matching')]
-    #
-    # print(model_pairs)
-    #
-    # diffs = {score: {} for score in score_types}
-    # diff_mats = {score: {} for score in score_types}
-    # dm_values = {score: {} for score in score_types}
-    #
-    # for pit in pit_types:
-    #     for score in score_types:
-    #         for model_a, model_b in model_pairs:
-    #             key = DiffKey(pit, model_a, model_b)
-    #             try:
-    #                 vec_a = vecs[score][model_a][pit]
-    #                 vec_b = vecs[score][model_b][pit]
-    #             except KeyError:
-    #                 continue  # Skip if data missing for a model/pit combination
-    #             diffs[score][key] = vec_a - vec_b
-    #             diff_mats[score][key] = np.vstack([
-    #                 res["diff_vecs"][score][pit][key] for res in results
-    #             ])
-    #             dm_values[score][key] = np.array([
-    #                 res["dm_stats"][score][pit][key] for res in results
-    #             ])
-    #
-    # for score, score_dict in diffs.items():
-    #     for key in score_dict:
-    #         print(f"{score}: {key}")
-    #
-    # # Compute rejection rates for a grid of alpha levels
-    # alpha_grid = np.linspace(0.01, 0.2, 20)
-    # dm_rejection_rates = {score: {} for score in score_types}
-    #
-    # for score, results_dict in dm_values.items():
-    #     for key, stats_vec in results_dict.items():
-    #         right = np.array([(stats_vec > norm.ppf(1 - a)).mean() for a in alpha_grid])
-    #         left = np.array([(stats_vec < norm.ppf(a)).mean() for a in alpha_grid])
-    #         two_sided = np.array([(np.abs(stats_vec) > norm.ppf(1 - a / 2)).mean() for a in alpha_grid])
-    #         dm_rejection_rates[score][key] = {
-    #             "right": right,
-    #             "left": left,
-    #             "two-sided": two_sided,
-    #         }
-    #
-    # key_oracle_fg = DiffKey("oracle", "f", "g")
-    # key_ecdf_fg = DiffKey("ecdf", "f", "g")
-    #
-    # for score in score_types:
-    #     if (
-    #             key_oracle_fg in dm_rejection_rates[score]
-    #             and key_ecdf_fg in dm_rejection_rates[score]
-    #     ):
-    #         rates_oracle = dm_rejection_rates[score][key_oracle_fg]["two-sided"]
-    #         rates_ecdf = dm_rejection_rates[score][key_ecdf_fg]["two-sided"]
-    #         plt.figure()
-    #         plt.plot(alpha_grid, rates_oracle, label="oracle")
-    #         plt.plot(alpha_grid, rates_ecdf, label="ecdf")
-    #         plt.plot(alpha_grid, alpha_grid, "--", color="gray", label="alpha = rejection rate")
-    #         plt.xlabel("alpha")
-    #         plt.ylabel("rejection rate")
-    #         plt.title(f"DM test size curves ({score}, f - g)")
-    #         plt.legend()
-    #         plt.grid(True)
-    #         plt.show()
-    #
-    #         plot_dm_size_discrepancy(
-    #             alpha_grid,
-    #             rates_oracle,
-    #             rates_ecdf,
-    #             score,
-    #         )
-    #
-    # for score, label, oracle_key, ecdf_key in score_score_keys:
-    #     if (
-    #             oracle_key in dm_rejection_rates.get(score, {})
-    #             and ecdf_key in dm_rejection_rates.get(score, {})
-    #     ):
-    #         rates_oracle = dm_rejection_rates[score][oracle_key]["two-sided"]
-    #         rates_ecdf = dm_rejection_rates[score][ecdf_key]["two-sided"]
-    #
-    #         plt.figure()
-    #         plt.plot(alpha_grid, rates_oracle, label="oracle")
-    #         plt.plot(alpha_grid, rates_ecdf, label="ecdf")
-    #         plt.plot(
-    #             alpha_grid,
-    #             alpha_grid,
-    #             "--",
-    #             color="gray",
-    #             label="alpha = rejection rate",
-    #         )
-    #         plt.xlabel("alpha")
-    #         plt.ylabel("rejection rate")
-    #         plt.title(f"DM test size curves ({score}, {label})")
-    #         plt.legend()
-    #         plt.grid(True)
-    #         plt.show()
-    #
-    #         plot_dm_size_discrepancy(
-    #             alpha_grid,
-    #             rates_oracle,
-    #             rates_ecdf,
-    #             score,
-    #             label,
-    #         )
-    #
-    # # === Plot score differences for bb1 - f to visually inspect results ===
-    # # for sc in score_types:
-    # #     for key in list(diffs[sc].keys()):
-    # #         diffs[sc][key] = div_by_stdev(str(key), diffs[sc][key])
-    #
-    # diff_keys = sorted({k for d in diffs.values() for k in d})
-    # score_dicts = make_score_dicts(diffs, diff_keys, score_types)
-    #
-    # plot_aligned_kl_matched_scores(score_dicts, score_score_keys)
+    results = []
+
+    with ProcessPoolExecutor() as executor:
+        futures = [executor.submit(
+            simulate_one_rep, n, df, f_rho, g_rho, p_rho, theta_sGumbel
+        ) for _ in range(reps)]
+
+        for future in tqdm(as_completed(futures), total=reps, desc="Running simulations"):
+            results.append(future.result())
+
+    print("Sample result keys:")
+    for k in results[0].keys():
+        print(" ", k)
+
+    # Store extracted vectors in a dictionary: e.g., vecs["LogS"]["f"]["oracle"]
+    vecs = {score: {model: {} for model in all_copula_models} for score in score_types}
+    for score in score_types:
+        for model in all_copula_models:
+            for pit in pit_types:
+                try:
+                    vecs[score][model][pit] = np.array([
+                        res["sums"][score][model][pit] for res in results
+                    ])
+                except KeyError:
+                    print(f"Key error for {score}: {model}, {pit}")
+
+    # Get all pairwise model combinations (excluding self-pairs)
+    model_pairs = list(combinations(copula_models_for_plots, 2))  # [('f', 'g'), ('f', 'p'), ..., ('bb1', 'f_for_KL_matching')]
+
+    print(model_pairs)
+
+    diffs = {score: {} for score in score_types}
+    diff_mats = {score: {} for score in score_types}
+    dm_values = {score: {} for score in score_types}
+
+    for pit in pit_types:
+        for score in score_types:
+            for model_a, model_b in model_pairs:
+                key = DiffKey(pit, model_a, model_b)
+                try:
+                    vec_a = vecs[score][model_a][pit]
+                    vec_b = vecs[score][model_b][pit]
+                except KeyError:
+                    continue  # Skip if data missing for a model/pit combination
+                diffs[score][key] = vec_a - vec_b
+                diff_mats[score][key] = np.vstack([
+                    res["diff_vecs"][score][pit][key] for res in results
+                ])
+                dm_values[score][key] = np.array([
+                    res["dm_stats"][score][pit][key] for res in results
+                ])
+
+    for score, score_dict in diffs.items():
+        for key in score_dict:
+            print(f"{score}: {key}")
+
+    # Compute rejection rates for a grid of alpha levels
+    alpha_grid = np.linspace(0.01, 0.2, 20)
+    dm_rejection_rates = {score: {} for score in score_types}
+
+    for score, results_dict in dm_values.items():
+        for key, stats_vec in results_dict.items():
+            right = np.array([(stats_vec > norm.ppf(1 - a)).mean() for a in alpha_grid])
+            left = np.array([(stats_vec < norm.ppf(a)).mean() for a in alpha_grid])
+            two_sided = np.array([(np.abs(stats_vec) > norm.ppf(1 - a / 2)).mean() for a in alpha_grid])
+            dm_rejection_rates[score][key] = {
+                "right": right,
+                "left": left,
+                "two-sided": two_sided,
+            }
+
+    key_oracle_fg = DiffKey("oracle", "f", "g")
+    key_ecdf_fg = DiffKey("ecdf", "f", "g")
+
+    for score in score_types:
+        if (
+                key_oracle_fg in dm_rejection_rates[score]
+                and key_ecdf_fg in dm_rejection_rates[score]
+        ):
+            rates_oracle = dm_rejection_rates[score][key_oracle_fg]["two-sided"]
+            rates_ecdf = dm_rejection_rates[score][key_ecdf_fg]["two-sided"]
+            plt.figure()
+            plt.plot(alpha_grid, rates_oracle, label="oracle")
+            plt.plot(alpha_grid, rates_ecdf, label="ecdf")
+            plt.plot(alpha_grid, alpha_grid, "--", color="gray", label="alpha = rejection rate")
+            plt.xlabel("alpha")
+            plt.ylabel("rejection rate")
+            plt.title(f"DM test size curves ({score}, f - g)")
+            plt.legend()
+            plt.grid(True)
+            plt.show()
+
+            plot_dm_size_discrepancy(
+                alpha_grid,
+                rates_oracle,
+                rates_ecdf,
+                score,
+            )
+
+    for score, label, oracle_key, ecdf_key in score_score_keys:
+        if (
+                oracle_key in dm_rejection_rates.get(score, {})
+                and ecdf_key in dm_rejection_rates.get(score, {})
+        ):
+            rates_oracle = dm_rejection_rates[score][oracle_key]["two-sided"]
+            rates_ecdf = dm_rejection_rates[score][ecdf_key]["two-sided"]
+
+            plt.figure()
+            plt.plot(alpha_grid, rates_oracle, label="oracle")
+            plt.plot(alpha_grid, rates_ecdf, label="ecdf")
+            plt.plot(
+                alpha_grid,
+                alpha_grid,
+                "--",
+                color="gray",
+                label="alpha = rejection rate",
+            )
+            plt.xlabel("alpha")
+            plt.ylabel("rejection rate")
+            plt.title(f"DM test size curves ({score}, {label})")
+            plt.legend()
+            plt.grid(True)
+            plt.show()
+
+            plot_dm_size_discrepancy(
+                alpha_grid,
+                rates_oracle,
+                rates_ecdf,
+                score,
+                label,
+            )
+
+    # === Plot score differences for bb1 - f to visually inspect results ===
+    # for sc in score_types:
+    #     for key in list(diffs[sc].keys()):
+    #         diffs[sc][key] = div_by_stdev(str(key), diffs[sc][key])
+
+    diff_keys = sorted({k for d in diffs.values() for k in d})
+    score_dicts = make_score_dicts(diffs, diff_keys, score_types)
+
+    plot_aligned_kl_matched_scores(score_dicts, score_score_keys)

@@ -6,13 +6,14 @@
 import numpy as np
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-from scipy.optimize import minimize
 from tqdm import tqdm
 
 from src.utils.copula_utils import average_threshold, make_fixed_region_mask
 from itertools import combinations
 import logging
 from scipy.stats import t as student_t
+
+from utils.optimize_utils import tune_bb1_params
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -26,9 +27,6 @@ from utils.copula_utils import (
     ecdf_transform,
 )
 from utils.scoring import (
-    estimate_kl_divergence_copulas,
-    estimate_localized_kl,
-    estimate_local_kl,
     LogS,
     CS,
     CLS,
@@ -50,8 +48,6 @@ from score_sim_config import (
     theta_sGumbel,
     reps,
     q_threshold,
-    kl_match_optim_method,
-    bb1_param_bounds,
     pit_types,
     score_types,
     all_copula_models,
@@ -85,87 +81,6 @@ MODEL_FAMILY = {
     "f_for_KL_matching": "student_t",
     "sGumbel": "sGumbel",
 }
-
-def tune_bb1_params(samples_list, masks_list, pdf_sg, pdf_f, verbose=False):
-    """KL-match BB1 parameters to the survival Gumbel."""
-
-    target_kl = np.mean([
-        estimate_kl_divergence_copulas(u, pdf_sg, pdf_f)
-        for u in samples_list
-    ])
-    target_loc = np.mean([
-        estimate_localized_kl(u, pdf_sg, pdf_f, m)
-        for u, m in zip(samples_list, masks_list)
-    ])
-    target_local = np.mean([
-        estimate_local_kl(u, pdf_sg, pdf_f, m)
-        for u, m in zip(samples_list, masks_list)
-    ])
-
-    def obj(params):
-        theta, delta = params
-        if theta <= 0 or delta < 1:
-            return np.inf
-        pdf = lambda u: bb1_copula_pdf_from_PITs(u, theta, delta)
-        kl_vals = [estimate_kl_divergence_copulas(u, pdf_sg, pdf) for u in samples_list]
-        return (np.mean(kl_vals) - target_kl) ** 2
-
-    def obj_loc(params):
-        theta, delta = params
-        if theta <= 0 or delta < 1:
-            return np.inf
-        pdf = lambda u: bb1_copula_pdf_from_PITs(u, theta, delta)
-        kl_vals = [estimate_localized_kl(u, pdf_sg, pdf, m) for u, m in zip(samples_list, masks_list)]
-        return (np.mean(kl_vals) - target_loc) ** 2
-
-    def obj_local(params):
-        theta, delta = params
-        if theta <= 0 or delta < 1:
-            return np.inf
-        pdf = lambda u: bb1_copula_pdf_from_PITs(u, theta, delta)
-        kl_vals = [estimate_local_kl(u, pdf_sg, pdf, m) for u, m in zip(samples_list, masks_list)]
-        return (np.mean(kl_vals) - target_local) ** 2
-
-    res_full = minimize(
-        obj,
-        x0=[2.0, 2.5],
-        bounds=bb1_param_bounds,
-        method=kl_match_optim_method,
-    )
-    res_loc = minimize(
-        obj_loc,
-        x0=[2.0, 2.5],
-        bounds=bb1_param_bounds,
-        method=kl_match_optim_method,
-    )
-    res_local = minimize(
-        obj_local,
-        x0=[2.0, 2.5],
-        bounds=bb1_param_bounds,
-        method=kl_match_optim_method,
-    )
-
-    pdf_full = lambda u: bb1_copula_pdf_from_PITs(u, res_full.x[0], res_full.x[1])
-    pdf_loc = lambda u: bb1_copula_pdf_from_PITs(u, res_loc.x[0], res_loc.x[1])
-    pdf_local = lambda u: bb1_copula_pdf_from_PITs(u, res_local.x[0], res_local.x[1])
-
-    optim_kl = np.mean([estimate_kl_divergence_copulas(u, pdf_sg, pdf_full) for u in samples_list])
-    optim_kl_loc = np.mean([estimate_localized_kl(u, pdf_sg, pdf_loc, m) for u, m in zip(samples_list, masks_list)])
-    optim_kl_local = np.mean([estimate_local_kl(u, pdf_sg, pdf_local, m) for u, m in zip(samples_list, masks_list)])
-
-
-    if verbose:
-        logger.info(f"Tuned BB1 (full): theta = {res_full.x[0]:.4f}, delta = {res_full.x[1]:.4f}")
-        logger.info(f"Target KL(sGumbel||f) full: {target_kl:.6f}")
-        logger.info(f"Optimized full KL(sGumbel||bb1): {optim_kl:.6f}")
-        logger.info(f"Tuned BB1 (localized): theta = {res_loc.x[0]:.4f}, delta = {res_loc.x[1]:.4f}")
-        logger.info(f"Target KL(sGumbel||f) localized: {target_loc:.6f}")
-        logger.info(f"Optimized localized KL(sGumbel||bb1): {optim_kl_loc:.6f}")
-        logger.info(f"Tuned BB1 (local): theta = {res_local.x[0]:.4f}, delta = {res_local.x[1]:.4f}")
-        logger.info(f"Target KL(sGumbel||f) local: {target_local:.6f}")
-        logger.info(f"Optimized local KL(sGumbel||bb1): {optim_kl_local:.6f}")
-
-    return res_full.x, res_loc.x, res_local.x
 
 def simulate_one_rep_total(n, df, f_rho, g_rho, p_rho,
                            theta_bb1, delta_bb1,

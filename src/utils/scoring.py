@@ -89,254 +89,6 @@ def CLS(mF: np.ndarray, w: np.ndarray, Fw_bar: float | None = None) -> np.ndarra
     mF = np.clip(mF, 1e-100, None)
     return w * (np.log(mF) - np.log(1 - Fw_bar))
 
-def LogS_sGumbel(u: np.ndarray, theta: float) -> float:
-    """Return the logarithmic score for a survival Gumbel copula.
-
-    Parameters
-    ----------
-    u : ndarray of shape (n, 2)
-        PIT pairs at which to evaluate the copula density.
-    theta : float
-        Dependence parameter of the survival Gumbel copula.
-
-    Returns
-    -------
-    float
-        Sum of log densities ``\\sum log f(u_i)``.
-    """
-    mF = sGumbel_copula_pdf_from_PITs(u, theta)
-    mF[mF == 0] = 1e-100
-    return float(np.sum(np.log(mF)))
-
-
-def CS_sGumbel(u: np.ndarray, theta: float, w: np.ndarray, Fw_bar: float | None = None) -> float:
-    """Return the censored logarithmic score for a survival Gumbel copula.
-
-    Parameters
-    ----------
-    u : ndarray of shape (n, 2)
-        PIT pairs.
-    theta : float
-        Dependence parameter of the copula.
-    w : ndarray of shape (n,)
-        Binary mask indicating which observations are in the evaluation region.
-
-    Returns
-    -------
-    float
-        Censored log score ``\\sum w_i log f(u_i) + (1-w_i) log \\bar f_w``.
-    """
-    mF = sGumbel_copula_pdf_from_PITs(u, theta)
-    mF[mF == 0] = 1e-100
-    log_mF = np.log(mF)
-    if Fw_bar is None:              # if no precalc done
-        Fw_bar = _fw_bar(mF, w)
-    log_Fw_bar = np.log(Fw_bar)
-    return float(np.sum(w * log_mF + (1 - w) * log_Fw_bar))
-
-
-def CLS_sGumbel(u: np.ndarray, theta: float, w: np.ndarray, Fw_bar: float | None = None) -> float:
-    """Return the conditional logarithmic score for a survival Gumbel copula.
-
-    Parameters
-    ----------
-    u : ndarray of shape (n, 2)
-        PIT pairs.
-    theta : float
-        Dependence parameter.
-    w : ndarray of shape (n,)
-        Binary mask for the evaluation region.
-
-    Returns
-    -------
-    float
-        Conditional log score ``\\sum w_i (log f(u_i) - log(1-F_w))``.
-    """
-    mF = sGumbel_copula_pdf_from_PITs(u, theta)
-    mF[mF == 0] = 1e-100
-    if Fw_bar is None:      # If no precalc done
-        Fw_bar = _fw_bar(mF, w)
-    log_1_minus = np.log(1 - Fw_bar)
-    return float(np.sum(w * (np.log(mF) - log_1_minus)))
-
-
-def LogS_bb1(u: np.ndarray, theta: float, delta: float) -> float:
-    """Return the logarithmic score for a BB1 copula.
-
-    Parameters
-    ----------
-    u : ndarray of shape (n, 2)
-        PIT pairs.
-    theta : float
-        First BB1 parameter.
-    delta : float
-        Second BB1 parameter.
-
-    Returns
-    -------
-    float
-        Sum of log densities.
-    """
-    mF = bb1_copula_pdf_from_PITs(u, theta, delta)
-    mF[mF == 0] = 1e-100
-    return float(np.sum(np.log(mF)))
-
-
-def CS_bb1(u: np.ndarray, theta: float, delta: float, w: np.ndarray, Fw_bar: float | None = None) -> float:
-    """Return the censored logarithmic score for a BB1 copula.
-
-    Parameters
-    ----------
-    u : ndarray of shape (n, 2)
-        PIT pairs.
-    theta : float
-        First BB1 parameter.
-    delta : float
-        Second BB1 parameter.
-    w : ndarray of shape (n,)
-        Binary mask selecting the evaluation region.
-
-    Returns
-    -------
-    float
-        Censored log score as for :func:`CS_sGumbel`.
-    """
-    mF = bb1_copula_pdf_from_PITs(u, theta, delta)
-    mF[mF == 0] = 1e-100
-    log_mF = np.log(mF)
-    if Fw_bar is None:  # If no precalc done
-        Fw_bar = _fw_bar(mF, w)
-    log_Fw_bar = np.log(Fw_bar)
-    return float(np.sum(w * log_mF + (1 - w) * log_Fw_bar))
-
-
-def CLS_bb1(u: np.ndarray, theta: float, delta: float, w: np.ndarray,  Fw_bar: float | None = None) -> float:
-    """Return the conditional logarithmic score for a BB1 copula.
-
-    Parameters
-    ----------
-    u : ndarray of shape (n, 2)
-        PIT pairs.
-    theta : float
-        First BB1 parameter.
-    delta : float
-        Second BB1 parameter.
-    w : ndarray of shape (n,)
-        Binary mask for the evaluation region.
-
-    Returns
-    -------
-    float
-        Conditional log score, analogous to :func:`CLS_sGumbel`.
-    """
-    mF = bb1_copula_pdf_from_PITs(u, theta, delta)
-    mF[mF == 0] = 1e-100
-    if Fw_bar is None:  # If no precalc is done
-        Fw_bar = _fw_bar(mF, w)
-    log_1_minus = np.log(1 - Fw_bar)
-    return float(np.sum(w * (np.log(mF) - log_1_minus)))
-
-
-def LogS_student_t_copula(u: np.ndarray, rho: float, df: float | int) -> float:
-    """Return the logarithmic score for a Student-t copula.
-
-    Parameters
-    ----------
-    u : ndarray of shape (n, 2)
-        PIT pairs.
-    rho : float
-        Correlation parameter ``\rho``.
-    df : int or float
-        Degrees of freedom.
-
-    Returns
-    -------
-    float
-        Sum of log densities at ``u``.
-    """
-    mF = student_t_copula_pdf_from_PITs(u, rho, df)
-    mF[mF == 0] = 1e-100
-    return float(np.sum(np.log(mF)))
-
-
-def CS_student_t_copula(u: np.ndarray, rho: float, df: float | int, w: np.ndarray, Fw_bar: float | None = None) -> float:
-    """Return the censored logarithmic score for a Student-t copula.
-
-    Parameters
-    ----------
-    u : ndarray of shape (n, 2)
-        PIT pairs.
-    rho : float
-        Correlation parameter ``\rho``.
-    df : int or float
-        Degrees of freedom.
-    w : ndarray of shape (n,)
-        Binary mask for region weights.
-
-    Returns
-    -------
-    float
-        Censored log score.
-    """
-    mF = student_t_copula_pdf_from_PITs(u, rho, df)
-    mF[mF == 0] = 1e-100
-    log_mF = np.log(mF)
-    if Fw_bar is None:  # If no precalc is done
-        Fw_bar = _fw_bar(mF, w)
-    log_Fw_bar = np.log(Fw_bar)
-    return float(np.sum(w * log_mF + (1 - w) * log_Fw_bar))
-
-
-def CLS_student_t_copula(u: np.ndarray, rho: float, df: float | int, w: np.ndarray, Fw_bar: float | None = None) -> float:
-    """Return the conditional logarithmic score for a Student-t copula.
-
-    Parameters
-    ----------
-    u : ndarray of shape (n, 2)
-        PIT pairs.
-    rho : float
-        Correlation parameter ``\rho``.
-    df : int or float
-        Degrees of freedom.
-    w : ndarray of shape (n,)
-        Binary mask for region weights.
-
-    Returns
-    -------
-    float
-        Conditional log score.
-    """
-    mF = student_t_copula_pdf_from_PITs(u, rho, df)
-    mF[mF == 0] = 1e-100
-    if Fw_bar is None:  # If no precalc is done
-        Fw_bar = _fw_bar(mF, w)
-    log_1_minus = np.log(1 - Fw_bar)
-    return float(np.sum(w * (np.log(mF) - log_1_minus)))
-
-
-def estimate_kl_divergence_copulas(u_samples: np.ndarray, pdf_p, pdf_q) -> float:
-    """Estimate the KL divergence ``D_KL(p||q)`` from samples.
-
-    Parameters
-    ----------
-    u_samples : ndarray of shape (n, 2)
-        Samples from distribution ``p``.
-    pdf_p : Callable[[np.ndarray], np.ndarray]
-        Density function of ``p`` evaluated on pairs.
-    pdf_q : Callable[[np.ndarray], np.ndarray]
-        Density function of ``q`` evaluated on pairs.
-
-    Returns
-    -------
-    float
-        Approximation of ``E_p[log p/q]``.
-    """
-    p_vals = pdf_p(u_samples)
-    q_vals = pdf_q(u_samples)
-    p_vals[p_vals == 0] = 1e-100
-    q_vals[q_vals == 0] = 1e-100
-    return float(np.mean(np.log(p_vals) - np.log(q_vals)))
-
 
 def estimate_localized_kl(u_samples: np.ndarray, pdf_p, pdf_f, region_mask: np.ndarray) -> float:
     """Estimate KL divergence restricted to ``region_mask``.
@@ -546,3 +298,123 @@ def perform_size_tests(score_dicts: dict, score_names: list[str], pair_to_keys: 
             }
         results[label] = res_pair
     return results
+
+def estimate_kl_divergence_copulasv2(
+    u_samples: np.ndarray,
+    pdf_p,
+    pdf_q,
+    eps: float = 1e-100,
+) -> float:
+    """
+    Monte-Carlo estimate of  D_KL(P || Q) = E_P[log p/q].
+
+    Parameters
+    ----------
+    u_samples : (n, d) ndarray
+        IID draws from the *first* copula P.
+    pdf_p, pdf_q : Callable[[ndarray], ndarray]
+        Density functions for P and Q, evaluated at a batch of points.
+    eps : float
+        Lower bound used to clip the densities to avoid log(0).
+
+    Returns
+    -------
+    float
+        Non-negative KL divergence (up to MC noise).
+    """
+    # --- evaluate and guard against underflow --------------------------------
+    p_vals = np.clip(pdf_p(u_samples), eps, np.inf)
+    q_vals = np.clip(pdf_q(u_samples), eps, np.inf)
+
+    # --- MC estimate of E_P[log p/q] -----------------------------------------
+    log_ratio = np.log(p_vals) - np.log(q_vals)
+    return float(log_ratio.mean())
+
+def estimate_localized_klv2(
+    u_samples: np.ndarray,
+    pdf_p,
+    pdf_f,
+    region_mask: np.ndarray,
+    eps: float = 1e-100,
+) -> float:
+    """
+    Localised KL  D_w(P||F)  for  w(x) = 1_R(x).
+
+    The result depends *only* on the probability masses that P and F assign
+    to the region R – exactly what Definition 3 requires.
+
+    Parameters
+    ----------
+    u_samples : (n, d) ndarray
+        Draws from the candidate / model copula P.
+    pdf_p, pdf_f : Callable[[ndarray], ndarray]
+        Copula densities of P and reference F.
+    region_mask : (n,) boolean ndarray
+        region_mask[i] is True  ⇔  u_samples[i] ∈ R.
+    eps : float
+        Numerical guard to keep log-arguments in (0,1).
+
+    Returns
+    -------
+    float
+        D_w(P‖F) ≥ 0.
+    """
+    # ---- probability of R under P ---------------------------------------
+    p_R = float(region_mask.mean())
+
+    # ---- probability of R under F (importance sampling) -----------------
+    p_vals = np.clip(pdf_p(u_samples), eps, np.inf)
+    f_vals = np.clip(pdf_f(u_samples), eps, np.inf)
+    weights = f_vals / p_vals                                #  dF/dP
+    f_R = float((weights * region_mask).mean())
+
+    # ---- numerical guards ------------------------------------------------
+    p_R = np.clip(p_R, eps, 1.0 - eps)
+    f_R = np.clip(f_R, eps, 1.0 - eps)
+
+    # ---- binary-KL formula ----------------------------------------------
+    return (
+        p_R * np.log(p_R / f_R)
+        + (1.0 - p_R) * np.log((1.0 - p_R) / (1.0 - f_R))
+    )
+
+
+def estimate_local_klv2(
+    u_samples: np.ndarray,
+    pdf_p,
+    pdf_f,
+    region_mask: np.ndarray,
+    eps: float = 1e-100,
+) -> float:
+    """
+    KL *inside* the region – i.e.  KL( P(·|R)  ||  F(·|R) ).
+
+    Unlike `estimate_localized_kl`, this keeps the full conditional densities
+    on R.  It is useful when you want to match behaviour *within* the region
+    after having matched the masses with `estimate_localized_kl`.
+
+    Returns
+    -------
+    float
+        KL(P(·|R)‖F(·|R)) ≥ 0, or raises ValueError if no sample falls in R.
+    """
+    # densities at the P-samples
+    p_vals = np.clip(pdf_p(u_samples), eps, np.inf)
+    f_vals = np.clip(pdf_f(u_samples), eps, np.inf)
+    log_ratio = np.log(p_vals) - np.log(f_vals)
+
+    w = region_mask.astype(float)
+    p_R = w.mean()                                           # P(R)
+
+    if p_R < eps:
+        raise ValueError("Region mask selects no samples; cannot estimate KL on R.")
+
+    # ---- 1.  E_P[ log p/f | R ] -----------------------------------------
+    cond_term = (w * log_ratio).mean() / p_R
+
+    # ---- 2.  log F(R) / P(R)  -------------------------------------------
+    weights = f_vals / p_vals                                #  dF/dP
+    f_R = (w * weights).mean()
+    f_R = np.clip(f_R, eps, 1.0 - eps)
+
+    return cond_term + np.log(f_R / p_R)
