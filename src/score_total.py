@@ -13,7 +13,7 @@ from itertools import combinations
 import logging
 from scipy.stats import t as student_t
 
-from utils.optimize_utils import tune_bb1_params
+from utils.optimize_utils import tune_sClayton_params
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -23,7 +23,7 @@ from utils.copula_utils import (
     sim_sGumbel_PITs,
     sGumbel_copula_pdf_from_PITs,
     student_t_copula_pdf_from_PITs,
-    bb1_copula_pdf_from_PITs,
+    sClayton_copula_pdf_from_PITs,
     ecdf_transform,
 )
 from utils.scoring import (
@@ -62,32 +62,39 @@ SCORE_FUNCS = {"LogS": LogS, "CS": CS, "CLS": CLS}
 PDF_FUNCS = {
     "student_t": student_t_copula_pdf_from_PITs,
     "sGumbel": sGumbel_copula_pdf_from_PITs,
-    "bb1": bb1_copula_pdf_from_PITs,
+    "sClayton": sClayton_copula_pdf_from_PITs,
 }
 
 PDF_PARAMS = {
     "student_t": ["rho", "df"],
     "sGumbel": ["theta"],
-    "bb1": ["theta", "delta"],
+    "sClayton": ["theta"],
 }
 
 MODEL_FAMILY = {
     "f": "student_t",
     "g": "student_t",
     "p": "student_t",
-    "bb1": "bb1",
-    "bb1_localized": "bb1",
-    "bb1_local": "bb1",
+    "sClayton": "sClayton",
+    "sClayton_localized": "sClayton",
+    "sClayton_local": "sClayton",
     "f_for_KL_matching": "student_t",
     "sGumbel": "sGumbel",
 }
 
-def simulate_one_rep_total(n, df, f_rho, g_rho, p_rho,
-                           theta_bb1, delta_bb1,
-                           theta_bb1_loc, delta_bb1_loc,
-                           theta_bb1_local, delta_bb1_local,
-                           theta_sg,
-                           fixed_region_mask_sg, fixed_region_mask_t):
+def simulate_one_rep_total(
+    n,
+    df,
+    f_rho,
+    g_rho,
+    p_rho,
+    theta_sClayton,
+    theta_sClayton_loc,
+    theta_sClayton_local,
+    theta_sg,
+    fixed_region_mask_sg,
+    fixed_region_mask_t,
+):
     """Simulate a single repetition without rolling windows."""
     from scipy.stats import multivariate_t, t as student_t
 
@@ -132,12 +139,12 @@ def simulate_one_rep_total(n, df, f_rho, g_rho, p_rho,
                "ecdf": (ecdf_p, {"rho": g_rho, "df": df})},
         "p": {"oracle": (oracle_p, {"rho": p_rho, "df": df}),
                "ecdf": (ecdf_p, {"rho": p_rho, "df": df})},
-        "bb1": {"oracle": (oracle_sg, {"theta": theta_bb1, "delta": delta_bb1}),
-                 "ecdf": (ecdf_sg, {"theta": theta_bb1, "delta": delta_bb1})},
-        "bb1_localized": {"oracle": (oracle_sg, {"theta": theta_bb1_loc, "delta": delta_bb1_loc}),
-                           "ecdf": (ecdf_sg, {"theta": theta_bb1_loc, "delta": delta_bb1_loc})},
-        "bb1_local": {"oracle": (oracle_sg, {"theta": theta_bb1_local, "delta": delta_bb1_local}),
-                       "ecdf": (ecdf_sg, {"theta": theta_bb1_local, "delta": delta_bb1_local})},
+        "sClayton": {"oracle": (oracle_sg, {"theta": theta_sClayton}),
+                 "ecdf": (ecdf_sg, {"theta": theta_sClayton})},
+        "sClayton_localized": {"oracle": (oracle_sg, {"theta": theta_sClayton_loc}),
+                           "ecdf": (ecdf_sg, {"theta": theta_sClayton_loc})},
+        "sClayton_local": {"oracle": (oracle_sg, {"theta": theta_sClayton_local}),
+                       "ecdf": (ecdf_sg, {"theta": theta_sClayton_local})},
         "f_for_KL_matching": {"oracle": (oracle_sg, {"rho": f_rho, "df": df}),
                                "ecdf": (ecdf_sg, {"rho": f_rho, "df": df})},
         "sGumbel": {"oracle": (oracle_sg, {"theta": theta_sg}),
@@ -188,18 +195,33 @@ def main():
     fixed_region_mask_t = make_fixed_region_mask(samples_t[0], avg_q_t)
 
 
-    (theta_bb1, delta_bb1), (theta_loc, delta_loc), (theta_local, delta_local) = tune_bb1_params(samples_sg, [fixed_region_mask_sg] * reps, pdf_sg, pdf_f, verbose=True)
+    theta_sClayton, theta_loc, theta_local = tune_sClayton_params(
+        samples_sg,
+        [fixed_region_mask_sg] * reps,
+        pdf_sg,
+        pdf_f,
+        verbose=True,
+    )
 
     results = []
     with ProcessPoolExecutor() as exe:
-        futures = [exe.submit(
-            simulate_one_rep_total, n, df, f_rho, g_rho, p_rho,
-            theta_bb1, delta_bb1,
-            theta_loc, delta_loc,
-            theta_local, delta_local,
-            theta_sGumbel,
-            fixed_region_mask_t, fixed_region_mask_sg,
-        ) for _ in range(reps)]
+        futures = [
+            exe.submit(
+                simulate_one_rep_total,
+                n,
+                df,
+                f_rho,
+                g_rho,
+                p_rho,
+                theta_sClayton,
+                theta_loc,
+                theta_local,
+                theta_sGumbel,
+                fixed_region_mask_t,
+                fixed_region_mask_sg,
+            )
+            for _ in range(reps)
+        ]
         for fut in tqdm(as_completed(futures), total=reps, desc="Running simulations"):
             results.append(fut.result())
 
