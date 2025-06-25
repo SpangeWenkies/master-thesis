@@ -520,8 +520,23 @@ def plot_dm_size_discrepancy(
     rates_oracle: np.ndarray,
     rates_ecdf: np.ndarray,
     score: str,
+    label: str = "f - g",
 ) -> None:
-    """Plot size discrepancy curves for oracle and ECDF DM tests."""
+    """Plot size discrepancy curves for oracle and ECDF DM tests.
+
+   Parameters
+   ----------
+   alpha_grid : ndarray of shape (m,)
+       Significance levels for the DM test.
+   rates_oracle : ndarray of shape (m,)
+       Rejection rates based on oracle PITs.
+   rates_ecdf : ndarray of shape (m,)
+       Rejection rates based on ECDF PITs.
+   score : str
+       Score type used for the DM test.
+   label : str, default "f - g"
+       Identifier of the model pair shown in the title.
+   """
 
     discrepancy_oracle = rates_oracle - alpha_grid
     discrepancy_ecdf = rates_ecdf - alpha_grid
@@ -536,7 +551,7 @@ def plot_dm_size_discrepancy(
     plt.axhline(0, color="gray", linestyle="--", linewidth=1)
     plt.xlabel("alpha")
     plt.ylabel("rejection rate - alpha")
-    plt.title(f"Size discrepancy (two-sided DM, {score}, f - g)")
+    plt.title(f"Size discrepancy (two-sided DM, {score}, {label})")
     plt.legend()
     plt.grid(True)
     plt.tight_layout()

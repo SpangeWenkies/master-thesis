@@ -5,10 +5,11 @@
 
 import numpy as np
 from concurrent.futures import ProcessPoolExecutor, as_completed
+
+from scipy.optimize import minimize
 from tqdm import tqdm
 
 from src.utils.copula_utils import average_threshold, make_fixed_region_mask
-from utils.optimize_utils import minimize_with_tqdm
 from itertools import combinations
 import logging
 from scipy.stats import t as student_t
@@ -23,7 +24,6 @@ from utils.copula_utils import (
     student_t_copula_pdf_from_PITs,
     bb1_copula_pdf_from_PITs,
     ecdf_transform,
-    sample_region_mask,
 )
 from utils.scoring import (
     estimate_kl_divergence_copulas,
@@ -92,6 +92,7 @@ MODEL_FAMILY = {
 
 def tune_bb1_params(samples_list, masks_list, pdf_sg, pdf_f, verbose=False):
     """KL-match BB1 parameters to the survival Gumbel."""
+
     target_kl = np.mean([
         estimate_kl_divergence_copulas(u, pdf_sg, pdf_f)
         for u in samples_list
@@ -129,26 +130,23 @@ def tune_bb1_params(samples_list, masks_list, pdf_sg, pdf_f, verbose=False):
         kl_vals = [estimate_local_kl(u, pdf_sg, pdf, m) for u, m in zip(samples_list, masks_list)]
         return (np.mean(kl_vals) - target_local) ** 2
 
-    res_full = minimize_with_tqdm(
+    res_full = minimize(
         obj,
         x0=[2.0, 2.5],
         bounds=bb1_param_bounds,
         method=kl_match_optim_method,
-        description="KL match full",
     )
-    res_loc = minimize_with_tqdm(
+    res_loc = minimize(
         obj_loc,
         x0=[2.0, 2.5],
         bounds=bb1_param_bounds,
         method=kl_match_optim_method,
-        description="KL match localized",
     )
-    res_local = minimize_with_tqdm(
+    res_local = minimize(
         obj_local,
         x0=[2.0, 2.5],
         bounds=bb1_param_bounds,
         method=kl_match_optim_method,
-        description="KL match local",
     )
 
     pdf_full = lambda u: bb1_copula_pdf_from_PITs(u, res_full.x[0], res_full.x[1])
