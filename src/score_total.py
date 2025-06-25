@@ -29,15 +29,9 @@ from utils.scoring import (
     estimate_kl_divergence_copulas,
     estimate_localized_kl,
     estimate_local_kl,
-    LogS_student_t_copula,
-    CS_student_t_copula,
-    CLS_student_t_copula,
-    LogS_sGumbel,
-    CS_sGumbel,
-    CLS_sGumbel,
-    LogS_bb1,
-    CS_bb1,
-    CLS_bb1,
+    LogS,
+    CS,
+    CLS,
 )
 from utils.score_helpers import div_by_stdev, make_score_dicts
 from utils.plot_utils import (
@@ -67,16 +61,18 @@ from score_sim_config import (
     score_score_keys,
 )
 
-SCORE_FUNCS = {
-    "student_t": {"LogS": LogS_student_t_copula,
-                  "CS":   CS_student_t_copula,
-                  "CLS":  CLS_student_t_copula},
-    "sGumbel":   {"LogS": LogS_sGumbel,
-                  "CS":   CS_sGumbel,
-                  "CLS":  CLS_sGumbel},
-    "bb1":       {"LogS": LogS_bb1,
-                  "CS":   CS_bb1,
-                  "CLS":  CLS_bb1}
+SCORE_FUNCS = {"LogS": LogS, "CS": CS, "CLS": CLS}
+
+PDF_FUNCS = {
+    "student_t": student_t_copula_pdf_from_PITs,
+    "sGumbel": sGumbel_copula_pdf_from_PITs,
+    "bb1": bb1_copula_pdf_from_PITs,
+}
+
+PDF_PARAMS = {
+    "student_t": ["rho", "df"],
+    "sGumbel": ["theta"],
+    "bb1": ["theta", "delta"],
 }
 
 MODEL_FAMILY = {
@@ -181,7 +177,20 @@ def simulate_one_rep_total(n, df, f_rho, g_rho, p_rho,
     from scipy.stats import multivariate_t, t as student_t
 
     def score(u, fam, sc, **kw):
-        return SCORE_FUNCS[fam][sc](u, **kw)
+        score_func = SCORE_FUNCS[sc]
+        pdf_func = PDF_FUNCS[fam]
+        pdf_kwargs = {k: kw[k] for k in PDF_PARAMS[fam] if k in kw}
+        w = kw.get("w")
+        fw_bar = kw.get("Fw_bar")
+        mF = pdf_func(u, **pdf_kwargs)
+        if sc == "LogS":
+            return float(np.sum(score_func(mF)))
+        elif sc == "CS":
+            return float(np.sum(score_func(mF, w, fw_bar)))
+        elif sc == "CLS":
+            return float(np.sum(score_func(mF, w, fw_bar)))
+        else:
+            raise ValueError(f"Unknown score type: {sc}")
 
     samples_p = multivariate_t.rvs(loc=[0,0], shape=[[1,0],[0,1]], df=df, size=n)
     oracle_p = student_t.cdf(samples_p, df)
