@@ -24,6 +24,71 @@ def outside_prob_from_sample(sample: np.ndarray, q_val: float) -> float:
         raise ValueError("sample must be of shape (n, 2)")
     return float(np.mean(sample[:, 0] + sample[:, 1] > q_val))
 
+
+def LogS(mF: np.ndarray) -> np.ndarray:
+    """Return elementwise logarithmic score ``log f(y)``.
+
+    Parameters
+    ----------
+    mF : ndarray
+        Density evaluations ``f(y)``.
+
+    Returns
+    -------
+    ndarray
+        ``log f(y)`` with zeros avoided by clipping ``mF``.
+    """
+    mF = np.clip(mF, 1e-100, None)
+    return np.log(mF)
+
+
+def CS(mF: np.ndarray, w: np.ndarray, Fw_bar: float | None = None) -> np.ndarray:
+    """Return censored logarithmic score contributions.
+
+    Parameters
+    ----------
+    mF : ndarray
+        Density evaluations ``f(y)``.
+    w : ndarray
+        Indicator mask of the evaluation region.
+    Fw_bar : float, optional
+        Right-tail probability ``\bar F_w``. If ``None`` it is estimated from
+        ``mF`` and ``w``.
+
+    Returns
+    -------
+    ndarray
+        Censored log score ``w * log f(y) + (1-w) * log \bar F_w``.
+    """
+    if Fw_bar is None:
+        Fw_bar = _fw_bar(mF, w)
+    mF = np.clip(mF, 1e-100, None)
+    return w * np.log(mF) + (1 - w) * np.log(Fw_bar)
+
+
+def CLS(mF: np.ndarray, w: np.ndarray, Fw_bar: float | None = None) -> np.ndarray:
+    """Return conditional logarithmic score contributions.
+
+    Parameters
+    ----------
+    mF : ndarray
+        Density evaluations ``f(y)``.
+    w : ndarray
+        Indicator mask of the evaluation region.
+    Fw_bar : float, optional
+        Right-tail probability ``\bar F_w``. If ``None`` it is estimated from
+        ``mF`` and ``w``.
+
+    Returns
+    -------
+    ndarray
+        Conditional log score ``w * (log f(y) - log(1-\bar F_w))``.
+    """
+    if Fw_bar is None:
+        Fw_bar = _fw_bar(mF, w)
+    mF = np.clip(mF, 1e-100, None)
+    return w * (np.log(mF) - np.log(1 - Fw_bar))
+
 def LogS_sGumbel(u: np.ndarray, theta: float) -> float:
     """Return the logarithmic score for a survival Gumbel copula.
 
