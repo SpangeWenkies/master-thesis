@@ -8,12 +8,12 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from tqdm import tqdm
 
-from src.utils.copula_utils import average_threshold, make_fixed_region_mask
+from src.utils.copula_utils import average_threshold, make_fixed_region_mask, sJoe_copula_pdf_from_PITs
 from itertools import combinations
 import logging
 from scipy.stats import t as student_t
 
-from utils.optimize_utils import tune_sClayton_params
+from utils.optimize_utils import tune_sJoe_params
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -23,7 +23,8 @@ from utils.copula_utils import (
     sim_sGumbel_PITs,
     sGumbel_copula_pdf_from_PITs,
     student_t_copula_pdf_from_PITs,
-    sClayton_copula_pdf_from_PITs,
+    Clayton_copula_pdf_from_PITs,
+    sJoe_copula_pdf_from_PITs,
     ecdf_transform,
 )
 from utils.scoring import (
@@ -62,23 +63,25 @@ SCORE_FUNCS = {"LogS": LogS, "CS": CS, "CLS": CLS}
 PDF_FUNCS = {
     "student_t": student_t_copula_pdf_from_PITs,
     "sGumbel": sGumbel_copula_pdf_from_PITs,
-    "sClayton": sClayton_copula_pdf_from_PITs,
+    "Clayton": Clayton_copula_pdf_from_PITs,
+    "sJoe": sJoe_copula_pdf_from_PITs
 }
 
 PDF_PARAMS = {
     "student_t": ["rho", "df"],
     "sGumbel": ["theta"],
-    "sClayton": ["theta"],
+    "Clayton": ["theta"],
+    "sJoe": ["theta"],
 }
 
 MODEL_FAMILY = {
     "f": "student_t",
     "g": "student_t",
     "p": "student_t",
-    "sClayton": "sClayton",
-    "sClayton_localized": "sClayton",
-    "sClayton_local": "sClayton",
-    "f_for_KL_matching": "student_t",
+    "sJoe": "sJoe",
+    "sJoe_localized": "sJoe",
+    "sJoe_local": "sJoe",
+    "Clayton": "Clayton",
     "sGumbel": "sGumbel",
 }
 
@@ -88,10 +91,11 @@ def simulate_one_rep_total(
     f_rho,
     g_rho,
     p_rho,
-    theta_sClayton,
-    theta_sClayton_loc,
-    theta_sClayton_local,
+    theta_sJoe,
+    theta_sJoe_loc,
+    theta_sJoe_local,
     theta_sg,
+    theta_clayton,
     fixed_region_mask_sg,
     fixed_region_mask_t,
 ):
@@ -139,14 +143,14 @@ def simulate_one_rep_total(
                "ecdf": (ecdf_p, {"rho": g_rho, "df": df})},
         "p": {"oracle": (oracle_p, {"rho": p_rho, "df": df}),
                "ecdf": (ecdf_p, {"rho": p_rho, "df": df})},
-        "sClayton": {"oracle": (oracle_sg, {"theta": theta_sClayton}),
-                 "ecdf": (ecdf_sg, {"theta": theta_sClayton})},
-        "sClayton_localized": {"oracle": (oracle_sg, {"theta": theta_sClayton_loc}),
-                           "ecdf": (ecdf_sg, {"theta": theta_sClayton_loc})},
-        "sClayton_local": {"oracle": (oracle_sg, {"theta": theta_sClayton_local}),
-                       "ecdf": (ecdf_sg, {"theta": theta_sClayton_local})},
-        "f_for_KL_matching": {"oracle": (oracle_sg, {"rho": f_rho, "df": df}),
-                               "ecdf": (ecdf_sg, {"rho": f_rho, "df": df})},
+        "sJoe": {"oracle": (oracle_sg, {"theta": theta_sJoe}),
+                 "ecdf": (ecdf_sg, {"theta": theta_sJoe})},
+        "sJoe_localized": {"oracle": (oracle_sg, {"theta": theta_sJoe_loc}),
+                           "ecdf": (ecdf_sg, {"theta": theta_sJoe_loc})},
+        "sJoe_local": {"oracle": (oracle_sg, {"theta": theta_sJoe_local}),
+                       "ecdf": (ecdf_sg, {"theta": theta_sJoe_local})},
+        "Clayton": {"oracle": (oracle_sg, {"theta": theta_clayton}),
+                               "ecdf": (ecdf_sg, {"theta": theta_clayton})},
         "sGumbel": {"oracle": (oracle_sg, {"theta": theta_sg}),
                     "ecdf": (ecdf_sg, {"theta": theta_sg})},
     }
@@ -181,7 +185,7 @@ def simulate_one_rep_total(
 
 def main():
     pdf_sg = lambda u: sGumbel_copula_pdf_from_PITs(u, theta_sGumbel)
-    pdf_f = lambda u: student_t_copula_pdf_from_PITs(u, rho=f_rho, df=df)
+    pdf_clayton = lambda u: student_t_copula_pdf_from_PITs(u, rho=f_rho, df=df)
 
     samples_sg = [sim_sGumbel_PITs(n, theta_sGumbel) for _ in range(reps)]
     samples_t = [student_t.cdf(
@@ -195,11 +199,11 @@ def main():
     fixed_region_mask_t = make_fixed_region_mask(samples_t[0], avg_q_t)
 
 
-    theta_sClayton, theta_loc, theta_local = tune_sClayton_params(
+    theta_sJoe, theta_sJoe_loc, theta_sJoe_local = tune_sJoe_params(
         samples_sg,
         [fixed_region_mask_sg] * reps,
         pdf_sg,
-        pdf_f,
+        pdf_clayton,
         verbose=True,
     )
 
@@ -213,9 +217,9 @@ def main():
                 f_rho,
                 g_rho,
                 p_rho,
-                theta_sClayton,
-                theta_loc,
-                theta_local,
+                theta_sJoe,
+                theta_sJoe_loc,
+                theta_sJoe_local,
                 theta_sGumbel,
                 fixed_region_mask_t,
                 fixed_region_mask_sg,

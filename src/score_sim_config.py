@@ -10,16 +10,17 @@ f_rho = -0.3    # candidate correlation coefficient for bivariate student-t copu
 g_rho = 0.3 # candidate correlation coefficient for bivariate student-t copula
 p_rho = 0   # DGP correlation coefficient for bivariate student-t copula
 theta_sGumbel = 2   # DGP dependence parameter for survival Gumbel copula
+theta_Clayton = 2
 reps = 100 # Simulation repetitions
 q_threshold = 0.05  # percentile to create the region mask
 kl_match_optim_method = "L-BFGS-B"  # scipy minimize optimization method
 bb1_param_bounds = [(0.001, 7), (1.001, 7)] # R VineCopula bb1 par and par2 bounds
-sClayton_param_bounds = [(0.001, 15)]
+sJoe_param_bounds = [(0, 15)]
 
 pit_types = ["oracle", "ecdf"]
 score_types = ["LogS", "CS", "CLS"]
-all_copula_models = ["f", "g", "p", "sClayton", "sClayton_local", "sClayton_localized", "f_for_KL_matching", "sGumbel"]
-copula_models_for_plots = ["f", "g", "p", "sClayton", "sClayton_local", "sClayton_localized", "f_for_KL_matching",]
+all_copula_models = ["f", "g", "p", "sJoe", "sJoe_local", "sJoe_localized", "Clayton", "sGumbel"]
+copula_models_for_plots = ["f", "g", "p", "sJoe", "sJoe_local", "sJoe_localized", "Clayton",]
 pair_to_keys = {
     "f - g": (DiffKey("oracle", "f", "g"), DiffKey("ecdf", "f", "g")),
     "f - p": (DiffKey("oracle", "f", "p"), DiffKey("ecdf", "f", "p")),
@@ -29,8 +30,8 @@ pair_to_keys_size = {
     "f - g": (DiffKey("oracle", "f", "g"), DiffKey("ecdf", "f", "g"))
 }
 score_score_keys = [
-    ("LogS",  "sClayton - f_for_KL_matching", DiffKey("oracle", "sClayton", "f_for_KL_matching"), DiffKey("ecdf", "sClayton", "f_for_KL_matching")),
-    ("CS",    "sClayton_localized - f_for_KL_matching", DiffKey("oracle", "sClayton_localized", "f_for_KL_matching"), DiffKey("ecdf", "sClayton_localized", "f_for_KL_matching")),
-    ("CLS",   "sClayton_local - f_for_KL_matching", DiffKey("oracle", "sClayton_local", "f_for_KL_matching"), DiffKey("ecdf", "sClayton_local", "f_for_KL_matching")),
+    ("LogS",  "sJoe - Clayton", DiffKey("oracle", "sJoe", "Clayton"), DiffKey("ecdf", "sJoe", "Clayton")),
+    ("CS",    "sJoe_localized - Clayton", DiffKey("oracle", "sJoe_localized", "Clayton"), DiffKey("ecdf", "sJoe_localized", "Clayton")),
+    ("CLS",   "sJoe_local - Clayton", DiffKey("oracle", "sJoe_local", "Clayton"), DiffKey("ecdf", "sJoe_local", "Clayton")),
 ]
 

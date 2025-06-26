@@ -134,6 +134,60 @@ def sim_sClayton_PITs(n: int, theta: float) -> np.ndarray:
     ''')
     return np.array(ro.r('u'))
 
+def sim_Clayton_PITs(n: int, theta: float) -> np.ndarray:
+    """Simulate PIT pairs from a Clayton copula.
+
+    Parameters
+    ----------
+    n : int
+        Number of observations to generate.
+    theta : float
+        Dependence parameter of the copula.
+
+    Returns
+    -------
+    ndarray of shape (n, 2)
+        Simulated PIT pairs ``(U_1, U_2)``.
+    """
+    if not -1 < theta <= 15:
+        raise ValueError(f"sClayton theta={theta:.4f} must be in (-1, 15]")
+    numpy2ri.activate()
+    ro.r.assign('theta', theta)
+    ro.r.assign('n', n)
+    ro.r('''
+        library(VineCopula)
+        C <- BiCop(3, par = theta)
+        u <- BiCopSim(n, C)
+    ''')
+    return np.array(ro.r('u'))
+
+def sim_sJoe_PITs(n: int, theta: float) -> np.ndarray:
+    """Simulate PIT pairs from a survival Joe copula.
+
+    Parameters
+    ----------
+    n : int
+        Number of observations to generate.
+    theta : float
+        Dependence parameter of the copula.
+
+    Returns
+    -------
+    ndarray of shape (n, 2)
+        Simulated PIT pairs ``(U_1, U_2)``.
+    """
+    if not 0 <= theta <= 15:
+        raise ValueError(f"sClayton theta={theta:.4f} must be in [0, 15]")
+    numpy2ri.activate()
+    ro.r.assign('theta', theta)
+    ro.r.assign('n', n)
+    ro.r('''
+        library(VineCopula)
+        C <- BiCop(16, par = theta)
+        u <- BiCopSim(n, C)
+    ''')
+    return np.array(ro.r('u'))
+
 def sim_student_t_copula_PITs(n: int, rho: float, df: float | int) -> np.ndarray:
     """Simulate PIT pairs from a Student-``t`` copula.
 
@@ -228,6 +282,60 @@ def sClayton_copula_pdf_from_PITs(u: np.ndarray, theta: float) -> np.ndarray:
     ro.r('''
         library(VineCopula)
         cop_model <- BiCop(family = 13, par = theta)
+        cop_pdf <- BiCopPDF(u_data[,1], u_data[,2], cop_model)
+    ''')
+    return np.array(ro.r('cop_pdf'))
+
+def Clayton_copula_pdf_from_PITs(u: np.ndarray, theta: float) -> np.ndarray:
+    """Evaluate the Clayton copula density at PIT pairs.
+
+    Parameters
+    ----------
+    u : ndarray of shape (n, 2)
+        PIT pairs where the density is evaluated.
+    theta : float
+        Dependence parameter of the copula.
+
+    Returns
+    -------
+    ndarray of shape (n,)
+        Copula density evaluated at each row of ``u``.
+    """
+    if not -1 < theta <= 15:
+        raise ValueError(f"Clayton theta={theta:.4f} must be in (-1, 15]")
+    numpy2ri.activate()
+    ro.globalenv['u_data'] = u
+    ro.globalenv['theta'] = theta
+    ro.r('''
+        library(VineCopula)
+        cop_model <- BiCop(family = 3, par = theta)
+        cop_pdf <- BiCopPDF(u_data[,1], u_data[,2], cop_model)
+    ''')
+    return np.array(ro.r('cop_pdf'))
+
+def sJoe_copula_pdf_from_PITs(u: np.ndarray, theta: float) -> np.ndarray:
+    """Evaluate the survival Joe copula density at PIT pairs.
+
+    Parameters
+    ----------
+    u : ndarray of shape (n, 2)
+        PIT pairs where the density is evaluated.
+    theta : float
+        Dependence parameter of the copula.
+
+    Returns
+    -------
+    ndarray of shape (n,)
+        Copula density evaluated at each row of ``u``.
+    """
+    if not 0<= theta <= 15:
+        raise ValueError(f"sJoe theta={theta:.4f} must be in [0, 15]")
+    numpy2ri.activate()
+    ro.globalenv['u_data'] = u
+    ro.globalenv['theta'] = theta
+    ro.r('''
+        library(VineCopula)
+        cop_model <- BiCop(family = 16, par = theta)
         cop_pdf <- BiCopPDF(u_data[,1], u_data[,2], cop_model)
     ''')
     return np.array(ro.r('cop_pdf'))
