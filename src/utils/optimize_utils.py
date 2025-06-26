@@ -128,7 +128,7 @@ def tune_sJoe_params(samples_list, masks_list, pdf_sg, pdf_Clayton, verbose=Fals
     )
     res_local = minimize(
         obj_local,
-        x0=[2.0, 2.5],
+        x0=[2.0],
         bounds=sJoe_param_bounds,
         method=kl_match_optim_method,
     )

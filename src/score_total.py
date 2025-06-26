@@ -47,6 +47,7 @@ from score_sim_config import (
     g_rho,
     p_rho,
     theta_sGumbel,
+    theta_Clayton,
     reps,
     q_threshold,
     pit_types,
@@ -95,7 +96,7 @@ def simulate_one_rep_total(
     theta_sJoe_loc,
     theta_sJoe_local,
     theta_sg,
-    theta_clayton,
+    theta_Clayton,
     fixed_region_mask_sg,
     fixed_region_mask_t,
 ):
@@ -149,8 +150,8 @@ def simulate_one_rep_total(
                            "ecdf": (ecdf_sg, {"theta": theta_sJoe_loc})},
         "sJoe_local": {"oracle": (oracle_sg, {"theta": theta_sJoe_local}),
                        "ecdf": (ecdf_sg, {"theta": theta_sJoe_local})},
-        "Clayton": {"oracle": (oracle_sg, {"theta": theta_clayton}),
-                               "ecdf": (ecdf_sg, {"theta": theta_clayton})},
+        "Clayton": {"oracle": (oracle_sg, {"theta": theta_Clayton}),
+                               "ecdf": (ecdf_sg, {"theta": theta_Clayton})},
         "sGumbel": {"oracle": (oracle_sg, {"theta": theta_sg}),
                     "ecdf": (ecdf_sg, {"theta": theta_sg})},
     }
@@ -185,7 +186,7 @@ def simulate_one_rep_total(
 
 def main():
     pdf_sg = lambda u: sGumbel_copula_pdf_from_PITs(u, theta_sGumbel)
-    pdf_clayton = lambda u: student_t_copula_pdf_from_PITs(u, rho=f_rho, df=df)
+    pdf_clayton = lambda u: Clayton_copula_pdf_from_PITs(u, theta_Clayton)
 
     samples_sg = [sim_sGumbel_PITs(n, theta_sGumbel) for _ in range(reps)]
     samples_t = [student_t.cdf(
@@ -221,6 +222,7 @@ def main():
                 theta_sJoe_loc,
                 theta_sJoe_local,
                 theta_sGumbel,
+                theta_Clayton,
                 fixed_region_mask_t,
                 fixed_region_mask_sg,
             )
