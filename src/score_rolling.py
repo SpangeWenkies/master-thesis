@@ -153,6 +153,10 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
     next_w_p = np.empty(P)
     next_w_sg = np.empty(P)
 
+    # --- fixed thresholds for the indicator weights -------------------------
+    avg_q_p = average_threshold([total_oracle_u_p], q_threshold)
+    avg_q_sg = average_threshold([total_oracle_u_sGumbel], q_threshold)
+
     for k, t in enumerate(range(R, R+P)):
         ecdf_u_p[k] = ecdf_transform(samples_p[t-R:t])
         oracle_u_p[k] = total_oracle_u_p[t-R:t]
@@ -164,8 +168,18 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
         next_ecdf_u_sGumbel[k] = ecdf_transform(np.vstack([samples_sGumbel[t - R:t], samples_sGumbel[t]]))[-1]
 
     for k in range(P):
-        next_w_p[k] = 1.0 if (next_oracle_u_p[k, 0] + next_oracle_u_p[k, 1]) <= ... else 0.0
-        next_w_sg[k] = 1.0 if (next_oracle_u_sGumbel[k, 0] + next_oracle_u_sGumbel[k, 1]) <= ... else 0.0
+        # Indicator weights based on the sum of PITs compared to the fixed
+        # threshold derived from the training sample.
+        next_w_p[k] = (
+            1.0
+            if (next_oracle_u_p[k, 0] + next_oracle_u_p[k, 1]) <= avg_q_p
+            else 0.0
+        )
+        next_w_sg[k] = (
+            1.0
+            if (next_oracle_u_sGumbel[k, 0] + next_oracle_u_sGumbel[k, 1]) <= avg_q_sg
+            else 0.0
+        )
 
 
     MC_SIZE_FOR_FW_BAR = 10000
@@ -182,14 +196,16 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
         "f", "g", "p", "sJoe", "sJoe_localized", "sJoe_local", "Clayton", "sGumbel"]}
 
     for k in range(P):
-        fw_bar_dict["f"][k] = outside_prob_from_sample(sample_f, q_threshold)
-        fw_bar_dict["g"][k] = outside_prob_from_sample(sample_g, q_threshold)
-        fw_bar_dict["p"][k] = outside_prob_from_sample(sample_p, q_threshold)
-        fw_bar_dict["sJoe"][k] = outside_prob_from_sample(sample_sJoe, q_threshold)
-        fw_bar_dict["sJoe_localized"][k] = outside_prob_from_sample(sample_sJoe_localized, q_threshold)
-        fw_bar_dict["sJoe_local"][k] = outside_prob_from_sample(sample_sJoe_local, q_threshold)
-        fw_bar_dict["Clayton"][k] = outside_prob_from_sample(sample_Clayton, q_threshold)
-        fw_bar_dict["sGumbel"][k] = outside_prob_from_sample(sample_sg, q_threshold)
+        # Right-tail probabilities corresponding to the same thresholds used for
+        # the indicator weights above.
+        fw_bar_dict["f"][k] = outside_prob_from_sample(sample_f, avg_q_p)
+        fw_bar_dict["g"][k] = outside_prob_from_sample(sample_g, avg_q_p)
+        fw_bar_dict["p"][k] = outside_prob_from_sample(sample_p, avg_q_p)
+        fw_bar_dict["sJoe"][k] = outside_prob_from_sample(sample_sJoe, avg_q_sg)
+        fw_bar_dict["sJoe_localized"][k] = outside_prob_from_sample(sample_sJoe_localized, avg_q_sg)
+        fw_bar_dict["sJoe_local"][k] = outside_prob_from_sample(sample_sJoe_local, avg_q_sg)
+        fw_bar_dict["Clayton"][k] = outside_prob_from_sample(sample_Clayton, avg_q_sg)
+        fw_bar_dict["sGumbel"][k] = outside_prob_from_sample(sample_sg, avg_q_sg)
 
     # Store rolling-window PITs and model parameters
     model_info = {
