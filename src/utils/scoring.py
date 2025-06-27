@@ -13,11 +13,10 @@ from .copula_utils import (
 
 def _fw_bar(mF: np.ndarray, w: np.ndarray) -> float:
     """Return P(Y not in R) given densities mF and 0/1 mask w."""
-    F_total = max(np.sum(mF), 1e-100)      # ≈ ∫ f(y) dy  over sample points
-    F_outside = np.sum(mF * (1 - w))       # mass outside region
-    F_outside = max(F_outside, 1e-100)
-    F_outside = min(F_outside, F_total)    # numerical guard
-    return F_outside / F_total            # right-tail probability
+    F_total    = np.sum(mF)             # ≈ ∫ f(y) dy  over sample points
+    F_outside  = np.sum(mF * (1 - w))   # mass outside region
+    F_outside  = max(F_outside, 1e-100)
+    return F_outside / F_total          # right-tail probability
 
 def outside_prob_from_sample(sample: np.ndarray, q_val: float) -> float:
     """Return ``P(U1 + U2 > q_val)`` estimated from PIT samples."""
@@ -39,78 +38,56 @@ def LogS(mF: np.ndarray) -> np.ndarray:
     ndarray
         ``log f(y)`` with zeros avoided by clipping ``mF``.
     """
-    mF = np.asarray(mF).copy()
-    mF[mF == 0] = 1e-100  # avoid numerical zeros
+    mF = np.clip(mF, 1e-100, None)
     return np.log(mF)
 
 
-def CS(
-    mF: np.ndarray,
-    u: np.ndarray,
-    q_val: float,
-    Fw_bar: float | None = None,
-) -> np.ndarray:
+def CS(mF: np.ndarray, w: np.ndarray, Fw_bar: float | None = None) -> np.ndarray:
     """Return censored logarithmic score contributions.
 
     Parameters
     ----------
     mF : ndarray
         Density evaluations ``f(y)``.
-    u : ndarray
-        PIT pairs associated with the densities.
-    q_val : float
-        Threshold used to construct the binary weight ``w`` via
-        ``u[:,0] + u[:,1] <= q_val``.
+    w : ndarray
+        Indicator mask of the evaluation region.
     Fw_bar : float, optional
         Right-tail probability ``\bar F_w``. If ``None`` it is estimated from
-        ``mF`` and the internally computed ``w``.
+        ``mF`` and ``w``.
 
     Returns
     -------
     ndarray
         Censored log score ``w * log f(y) + (1-w) * log \bar F_w``.
     """
-    w = (u[:, 0] + u[:, 1] <= q_val).astype(float)
     if Fw_bar is None:
         Fw_bar = _fw_bar(mF, w)
-    mF = np.asarray(mF).copy()
-    mF[mF == 0] = 1e-100  # avoid numerical zeros
+    mF = np.clip(mF, 1e-100, None)
     return w * np.log(mF) + (1 - w) * np.log(Fw_bar)
 
 
-def CLS(
-    mF: np.ndarray,
-    u: np.ndarray,
-    q_val: float,
-    Fw_bar: float | None = None,
-) -> np.ndarray:
+def CLS(mF: np.ndarray, w: np.ndarray, Fw_bar: float | None = None) -> np.ndarray:
     """Return conditional logarithmic score contributions.
 
     Parameters
     ----------
     mF : ndarray
         Density evaluations ``f(y)``.
-    u : ndarray
-        PIT pairs associated with the densities.
-    q_val : float
-        Threshold used to construct the binary weight ``w`` via
-        ``u[:,0] + u[:,1] <= q_val``.
+    w : ndarray
+        Indicator mask of the evaluation region.
     Fw_bar : float, optional
         Right-tail probability ``\bar F_w``. If ``None`` it is estimated from
-        ``mF`` and the internally computed ``w``.
+        ``mF`` and ``w``.
 
     Returns
     -------
     ndarray
         Conditional log score ``w * (log f(y) - log(1-\bar F_w))``.
     """
-    w = (u[:, 0] + u[:, 1] <= q_val).astype(float)
     if Fw_bar is None:
         Fw_bar = _fw_bar(mF, w)
-    # ensure strictly positive density values to avoid log(0)
-    mF = np.asarray(mF).copy()
-    mF[mF == 0] = 1e-100
-    return w * (np.log(mF) - np.log(1.0 - Fw_bar))
+    mF = np.clip(mF, 1e-100, None)
+    return w * (np.log(mF) - np.log(1 - Fw_bar))
 
 
 def estimate_localized_kl(u_samples: np.ndarray, pdf_p, pdf_f, region_mask: np.ndarray) -> float:
@@ -132,8 +109,8 @@ def estimate_localized_kl(u_samples: np.ndarray, pdf_p, pdf_f, region_mask: np.n
     float
         Localized KL divergence.
     """
-    p = pdf_p(u_samples)
-    f = pdf_f(u_samples)
+    p = np.clip(pdf_p(u_samples), 1e-300, 1e300)
+    f = np.clip(pdf_f(u_samples), 1e-300, 1e300)
     w = region_mask.astype(float)
 
     log_ratio = np.log(p) - np.log(f)
@@ -159,8 +136,8 @@ def estimate_local_kl(u_samples: np.ndarray, pdf_p, pdf_f, region_mask: np.ndarr
     float
         Weighted KL divergence.
     """
-    p_vals = pdf_p(u_samples)
-    f_vals = pdf_f(u_samples)
+    p_vals = np.clip(pdf_p(u_samples), 1e-300, 1e300)
+    f_vals = np.clip(pdf_f(u_samples), 1e-300, 1e300)
     log_ratio = np.log(p_vals) - np.log(f_vals)
 
     w = region_mask.astype(float)  # 0/1 indicator
@@ -345,9 +322,9 @@ def estimate_kl_divergence_copulasv2(
     float
         Non-negative KL divergence (up to MC noise).
     """
-    # --- evaluate densities --------------------------------
-    p_vals = pdf_p(u_samples)
-    q_vals = pdf_q(u_samples)
+    # --- evaluate and guard against underflow --------------------------------
+    p_vals = np.clip(pdf_p(u_samples), eps, np.inf)
+    q_vals = np.clip(pdf_q(u_samples), eps, np.inf)
 
     # --- MC estimate of E_P[log p/q] -----------------------------------------
     log_ratio = np.log(p_vals) - np.log(q_vals)
@@ -386,12 +363,14 @@ def estimate_localized_klv2(
     p_R = float(region_mask.mean())
 
     # ---- probability of R under F (importance sampling) -----------------
-    p_vals = pdf_p(u_samples)
-    f_vals = pdf_f(u_samples)
+    p_vals = np.clip(pdf_p(u_samples), eps, np.inf)
+    f_vals = np.clip(pdf_f(u_samples), eps, np.inf)
     weights = f_vals / p_vals                                #  dF/dP
     f_R = float((weights * region_mask).mean())
 
     # ---- numerical guards ------------------------------------------------
+    p_R = np.clip(p_R, eps, 1.0 - eps)
+    f_R = np.clip(f_R, eps, 1.0 - eps)
 
     # ---- binary-KL formula ----------------------------------------------
     return (
@@ -420,8 +399,8 @@ def estimate_local_klv2(
         KL(P(·|R)‖F(·|R)) ≥ 0, or raises ValueError if no sample falls in R.
     """
     # densities at the P-samples
-    p_vals = pdf_p(u_samples)
-    f_vals = pdf_f(u_samples)
+    p_vals = np.clip(pdf_p(u_samples), eps, np.inf)
+    f_vals = np.clip(pdf_f(u_samples), eps, np.inf)
     log_ratio = np.log(p_vals) - np.log(f_vals)
 
     w = region_mask.astype(float)
@@ -436,5 +415,6 @@ def estimate_local_klv2(
     # ---- 2.  log F(R) / P(R)  -------------------------------------------
     weights = f_vals / p_vals                                #  dF/dP
     f_R = (w * weights).mean()
+    f_R = np.clip(f_R, eps, 1.0 - eps)
 
     return cond_term + np.log(f_R / p_R)

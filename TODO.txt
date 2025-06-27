@@ -85,8 +85,3 @@ Size discrepancy plots:
     Zoek uit wat te doen met de rolling window??? kutzooi
     What does score_vectors do in simulate_one_rep
         maybe changing this broke the point-wise score calc
-
-
-
-
-

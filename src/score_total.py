@@ -8,7 +8,8 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from tqdm import tqdm
 
-from src.utils.copula_utils import sJoe_copula_pdf_from_PITs, sim_student_t_copula_PITs
+from src.utils.copula_utils import average_threshold, make_fixed_region_mask, sJoe_copula_pdf_from_PITs, \
+    sim_student_t_copula_PITs
 from itertools import combinations
 import logging
 from scipy.stats import t as student_t
@@ -107,15 +108,15 @@ def simulate_one_rep_total(
         score_func = SCORE_FUNCS[sc]
         pdf_func = PDF_FUNCS[fam]
         pdf_kwargs = {k: kw[k] for k in PDF_PARAMS[fam] if k in kw}
-        q_val = kw.get("q_val")
+        w = kw.get("w")
         fw_bar = kw.get("Fw_bar")
         mF = pdf_func(u, **pdf_kwargs)
         if sc == "LogS":
             return float(np.sum(score_func(mF)))
         elif sc == "CS":
-            return float(np.sum(score_func(mF, u, q_val, fw_bar)))
+            return float(np.sum(score_func(mF, w, fw_bar)))
         elif sc == "CLS":
-            return float(np.sum(score_func(mF, u, q_val, fw_bar)))
+            return float(np.sum(score_func(mF, w, fw_bar)))
         else:
             raise ValueError(f"Unknown score type: {sc}")
 
@@ -131,7 +132,18 @@ def simulate_one_rep_total(
     ])
     ecdf_sg = ecdf_transform(samples_sg)
 
+    avg_q_sg = average_threshold([oracle_sg], q_threshold)
+    avg_q_t = average_threshold([oracle_p], q_threshold)
 
+    fixed_region_mask_sg = make_fixed_region_mask(oracle_sg, avg_q_sg)
+    fixed_region_mask_t = make_fixed_region_mask(oracle_p, avg_q_t)
+
+    reference_masks = {
+        "oracle": fixed_region_mask_t,
+        "ecdf": fixed_region_mask_t,  # use same mask!
+        "sGumbel_oracle": fixed_region_mask_sg,
+        "sGumbel_ecdf": fixed_region_mask_sg
+    }
 
     model_info = {
         "f": {"oracle": (oracle_p, {"rho": f_rho, "df": df}),
@@ -155,20 +167,13 @@ def simulate_one_rep_total(
     score_vecs = {s: {m: {} for m in model_info} for s in score_types}
     score_sums = {s: {m: {} for m in model_info} for s in score_types}
 
-    q_vals = {
-        "oracle": q_threshold,
-        "ecdf": q_threshold,
-        "sGumbel_oracle": q_threshold,
-        "sGumbel_ecdf": q_threshold,
-    }
-
     for model, pits in model_info.items():
         fam = MODEL_FAMILY[model]
         for pit, (u, params) in pits.items():
-            q_val = q_vals.get(pit, q_threshold)
+            w = reference_masks[pit]
             log_v = score(u, fam, "LogS", **params)
-            cs_v = score(u, fam, "CS", q_val=q_val, **params)
-            cls_v = score(u, fam, "CLS", q_val=q_val, **params)
+            cs_v = score(u, fam, "CS", w=w, **params)
+            cls_v = score(u, fam, "CLS", w=w, **params)
             score_vecs["LogS"][model][pit] = log_v
             score_vecs["CS"][model][pit] = cs_v
             score_vecs["CLS"][model][pit] = cls_v

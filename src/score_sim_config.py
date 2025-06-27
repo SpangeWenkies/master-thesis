@@ -35,4 +35,3 @@ score_score_keys = [
     ("CS",    "sJoe_localized - Clayton", DiffKey("oracle", "sJoe_localized", "Clayton"), DiffKey("ecdf", "sJoe_localized", "Clayton")),
     ("CLS",   "sJoe_local - Clayton", DiffKey("oracle", "sJoe_local", "Clayton"), DiffKey("ecdf", "sJoe_local", "Clayton")),
 ]
-

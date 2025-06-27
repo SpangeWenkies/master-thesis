@@ -1,4 +1,3 @@
-from scipy.ndimage import histogram
 
 from utils.copula_utils import (
     sim_sGumbel_PITs,
