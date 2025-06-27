@@ -86,7 +86,7 @@ def R_bb7(u1, u2, theta, delta, resid1, resid2, verbose=True):
     kde = gaussian_kde(uv)
     empirical_pdf = kde(np.vstack([U1.ravel(), U2.ravel()])).reshape(U1.shape)
 
-    true_pdf_clipped = np.clip(true_pdf, 0, 8)
+    true_pdf_clipped = true_pdf
 
 
     if verbose:
@@ -210,7 +210,7 @@ def simulate_joint_t_marginals(n, df, theta, delta, verbose=True):
     # --- Step 4: Plot ---
     if verbose:
         plt.figure(figsize=(8, 6))
-        contour = plt.contourf(U1, U2, np.clip(copula_pdf, 0, 8), levels=30, cmap="viridis")
+        contour = plt.contourf(U1, U2, copula_pdf, levels=30, cmap="viridis")
         plt.contour(U1, U2, W_true, levels=[0.5], colors="red", linewidths=2)
         plt.title("BB7 Copula PDF with True Region Overlay")
         plt.xlabel("u1")
