@@ -42,48 +42,66 @@ def LogS(mF: np.ndarray) -> np.ndarray:
     return np.log(mF)
 
 
-def CS(mF: np.ndarray, w: np.ndarray, Fw_bar: float | None = None) -> np.ndarray:
+def CS(
+    mF: np.ndarray,
+    u: np.ndarray,
+    q_val: float,
+    Fw_bar: float | None = None,
+) -> np.ndarray:
     """Return censored logarithmic score contributions.
 
     Parameters
     ----------
     mF : ndarray
         Density evaluations ``f(y)``.
-    w : ndarray
-        Indicator mask of the evaluation region.
+    u : ndarray
+        PIT pairs associated with the densities.
+    q_val : float
+        Threshold used to construct the binary weight ``w`` via
+        ``u[:,0] + u[:,1] <= q_val``.
     Fw_bar : float, optional
         Right-tail probability ``\bar F_w``. If ``None`` it is estimated from
-        ``mF`` and ``w``.
+        ``mF`` and the internally computed ``w``.
 
     Returns
     -------
     ndarray
         Censored log score ``w * log f(y) + (1-w) * log \bar F_w``.
     """
+    w = (u[:, 0] + u[:, 1] <= q_val).astype(float)
     if Fw_bar is None:
         Fw_bar = _fw_bar(mF, w)
     mF = np.clip(mF, 1e-100, None)
     return w * np.log(mF) + (1 - w) * np.log(Fw_bar)
 
 
-def CLS(mF: np.ndarray, w: np.ndarray, Fw_bar: float | None = None) -> np.ndarray:
+def CLS(
+    mF: np.ndarray,
+    u: np.ndarray,
+    q_val: float,
+    Fw_bar: float | None = None,
+) -> np.ndarray:
     """Return conditional logarithmic score contributions.
 
     Parameters
     ----------
     mF : ndarray
         Density evaluations ``f(y)``.
-    w : ndarray
-        Indicator mask of the evaluation region.
+    u : ndarray
+        PIT pairs associated with the densities.
+    q_val : float
+        Threshold used to construct the binary weight ``w`` via
+        ``u[:,0] + u[:,1] <= q_val``.
     Fw_bar : float, optional
         Right-tail probability ``\bar F_w``. If ``None`` it is estimated from
-        ``mF`` and ``w``.
+        ``mF`` and the internally computed ``w``.
 
     Returns
     -------
     ndarray
         Conditional log score ``w * (log f(y) - log(1-\bar F_w))``.
     """
+    w = (u[:, 0] + u[:, 1] <= q_val).astype(float)
     if Fw_bar is None:
         Fw_bar = _fw_bar(mF, w)
     mF = np.clip(mF, 1e-100, None)
