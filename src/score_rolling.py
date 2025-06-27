@@ -118,6 +118,18 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
         else:
             raise ValueError(f"Unknown score_type: {score_type}")
 
+    # === 1. KL match sJoe copulas using a fresh Monte Carlo sample ===
+    kl_sample = sim_sGumbel_PITs(2_000_000, theta_sGumbel)
+    kl_mask = sample_region_mask(kl_sample, q_threshold, df)
+    pdf_sg_big = sGumbel_copula_pdf_from_PITs(kl_sample, theta_sGumbel)
+    pdf_clayton_big = Clayton_copula_pdf_from_PITs(kl_sample, theta_Clayton)
+    (
+        theta_sJoe,
+        theta_sJoe_localized,
+        theta_sJoe_local,
+    ) = tune_sJoe_params([kl_sample], [kl_mask], pdf_sg_big, pdf_clayton_big)
+
+    # === 2. Generate evaluation sample ===
     # Define DGP1 (indep. student-t)
     samples_p = multivariate_t.rvs(loc=[0, 0], shape=[[1, 0], [0, 1]], df=df, size=n)
     total_oracle_u_p = student_t.cdf(samples_p, df)
@@ -152,11 +164,6 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
         next_oracle_u_sGumbel[k] = total_oracle_u_sGumbel[t]
         next_ecdf_u_sGumbel[k] = ecdf_transform(np.vstack([samples_sGumbel[t - R:t], samples_sGumbel[t]]))[-1]
 
-    # === KL match sJoe copulas for this repetition ===
-    pdf_sGumbel = lambda u: sGumbel_copula_pdf_from_PITs(u, theta_sGumbel)
-    pdf_clayton = lambda u: Clayton_copula_pdf_from_PITs(u, theta_Clayton)
-    mask_full = sample_region_mask(total_oracle_u_sGumbel, q_threshold, df=df)
-
     avg_q_p = np.empty(P)
     avg_q_sg = np.empty(P)
     for k in range(P):
@@ -167,11 +174,6 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
         next_w_p[k] = 1.0 if (next_oracle_u_p[k, 0] + next_oracle_u_p[k, 1]) <= avg_q_p[k] else 0.0
         next_w_sg[k] = 1.0 if (next_oracle_u_sGumbel[k, 0] + next_oracle_u_sGumbel[k, 1]) <= avg_q_sg[k] else 0.0
 
-    (
-        theta_sJoe,
-        theta_sJoe_localized,
-        theta_sJoe_local,
-    ) = tune_sJoe_params(oracle_u_sGumbel, mask_sg, pdf_sGumbel, pdf_clayton)
 
     MC_SIZE_FOR_FW_BAR = 10000
     sample_f = sim_student_t_copula_PITs(MC_SIZE_FOR_FW_BAR, f_rho, df)

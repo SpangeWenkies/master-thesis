@@ -92,13 +92,8 @@ def simulate_one_rep_total(
     f_rho,
     g_rho,
     p_rho,
-    theta_sJoe,
-    theta_sJoe_loc,
-    theta_sJoe_local,
     theta_sg,
     theta_Clayton,
-    fixed_region_mask_sg,
-    fixed_region_mask_t,
 ):
     """Simulate a single repetition without rolling windows."""
     from scipy.stats import multivariate_t, t as student_t
@@ -119,6 +114,18 @@ def simulate_one_rep_total(
         else:
             raise ValueError(f"Unknown score type: {sc}")
 
+    # === 1. KL match sJoe copulas on a fresh sample ===
+    kl_sample = sim_sGumbel_PITs(2_000_000, theta_sg)
+    kl_mask = sample_region_mask(kl_sample, q_threshold, df)
+    pdf_sg_big = sGumbel_copula_pdf_from_PITs(kl_sample, theta_sg)
+    pdf_clayton_big = Clayton_copula_pdf_from_PITs(kl_sample, theta_Clayton)
+    (
+        theta_sJoe,
+        theta_sJoe_loc,
+        theta_sJoe_local,
+    ) = tune_sJoe_params([kl_sample], [kl_mask], pdf_sg_big, pdf_clayton_big)
+
+    # === 2. Generate evaluation sample ===
     samples_p = multivariate_t.rvs(loc=[0,0], shape=[[1,0],[0,1]], df=df, size=n)
     oracle_p = student_t.cdf(samples_p, df)
     ecdf_p = ecdf_transform(samples_p)
@@ -129,6 +136,12 @@ def simulate_one_rep_total(
         student_t.ppf(oracle_sg[:,1], df),
     ])
     ecdf_sg = ecdf_transform(samples_sg)
+
+    avg_q_sg = average_threshold([oracle_sg], q_threshold)
+    avg_q_t = average_threshold([oracle_p], q_threshold)
+
+    fixed_region_mask_sg = make_fixed_region_mask(oracle_sg, avg_q_sg)
+    fixed_region_mask_t = make_fixed_region_mask(oracle_p, avg_q_t)
 
     reference_masks = {
         "oracle": fixed_region_mask_t,
@@ -185,29 +198,6 @@ def simulate_one_rep_total(
     return {"sums": score_sums, "vecs": score_vecs, "diff_vecs": diff_vecs}
 
 def main():
-    pdf_sg = lambda u: sGumbel_copula_pdf_from_PITs(u, theta_sGumbel)
-    pdf_clayton = lambda u: Clayton_copula_pdf_from_PITs(u, theta_Clayton)
-
-    samples_sg = [sim_sGumbel_PITs(n, theta_sGumbel) for _ in range(reps)]
-    samples_t = [student_t.cdf(
-        np.random.multivariate_normal([0, 0], [[1, f_rho], [f_rho, 1]], size=n), df=df)
-        for _ in range(reps)]
-
-    avg_q_sg = average_threshold(samples_sg, q_threshold)
-    avg_q_t = average_threshold(samples_t, q_threshold)
-
-    fixed_region_mask_sg = make_fixed_region_mask(samples_sg[0], avg_q_sg)
-    fixed_region_mask_t = make_fixed_region_mask(samples_t[0], avg_q_t)
-
-
-    theta_sJoe, theta_sJoe_loc, theta_sJoe_local = tune_sJoe_params(
-        samples_sg,
-        [fixed_region_mask_sg] * reps,
-        pdf_sg,
-        pdf_clayton,
-        verbose=True,
-    )
-
     results = []
     with ProcessPoolExecutor() as exe:
         futures = [
@@ -218,13 +208,8 @@ def main():
                 f_rho,
                 g_rho,
                 p_rho,
-                theta_sJoe,
-                theta_sJoe_loc,
-                theta_sJoe_local,
                 theta_sGumbel,
                 theta_Clayton,
-                fixed_region_mask_t,
-                fixed_region_mask_sg,
             )
             for _ in range(reps)
         ]
