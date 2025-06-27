@@ -121,8 +121,8 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
     # === 1. KL match sJoe copulas using a fresh Monte Carlo sample ===
     kl_sample = sim_sGumbel_PITs(2_000_000, theta_sGumbel)
     kl_mask = sample_region_mask(kl_sample, q_threshold, df)
-    pdf_sg_big = sGumbel_copula_pdf_from_PITs(kl_sample, theta_sGumbel)
-    pdf_clayton_big = Clayton_copula_pdf_from_PITs(kl_sample, theta_Clayton)
+    pdf_sg_big = lambda u: sGumbel_copula_pdf_from_PITs(u, theta_sGumbel)
+    pdf_clayton_big = lambda u: Clayton_copula_pdf_from_PITs(u, theta_Clayton)
     (
         theta_sJoe,
         theta_sJoe_localized,

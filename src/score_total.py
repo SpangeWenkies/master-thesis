@@ -117,8 +117,8 @@ def simulate_one_rep_total(
     # === 1. KL match sJoe copulas on a fresh sample ===
     kl_sample = sim_sGumbel_PITs(2_000_000, theta_sg)
     kl_mask = sample_region_mask(kl_sample, q_threshold, df)
-    pdf_sg_big = sGumbel_copula_pdf_from_PITs(kl_sample, theta_sg)
-    pdf_clayton_big = Clayton_copula_pdf_from_PITs(kl_sample, theta_Clayton)
+    pdf_sg_big = lambda u: sGumbel_copula_pdf_from_PITs(u, theta_sg)
+    pdf_clayton_big = lambda u: Clayton_copula_pdf_from_PITs(u, theta_Clayton)
     (
         theta_sJoe,
         theta_sJoe_loc,
