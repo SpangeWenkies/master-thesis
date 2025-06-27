@@ -19,8 +19,6 @@ from utils.copula_utils import (
     student_t_copula_pdf_from_PITs,
     Clayton_copula_pdf_from_PITs,
     sJoe_copula_pdf_from_PITs,
-    average_threshold,
-    make_fixed_region_mask,
 )
 from utils.scoring import (
     LogS,
@@ -105,7 +103,7 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
 
         # Separate parameters for the PDF and the scoring rule
         pdf_kwargs = {k: kwargs[k] for k in PDF_PARAMS[model_id] if k in kwargs}
-        w = kwargs.get("w")
+        q_val = kwargs.get("q_val")
         fw_bar = kwargs.get("Fw_bar")
 
         mF = pdf_func(u, **pdf_kwargs)
@@ -113,9 +111,9 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
         if score_type == "LogS":
             return float(np.sum(score_func(mF)))
         elif score_type == "CS":
-            return float(np.sum(score_func(mF, w, fw_bar)))
+            return float(np.sum(score_func(mF, u, q_val, fw_bar)))
         elif score_type == "CLS":
-            return float(np.sum(score_func(mF, w, fw_bar)))
+            return float(np.sum(score_func(mF, u, q_val, fw_bar)))
         else:
             raise ValueError(f"Unknown score_type: {score_type}")
 
@@ -150,8 +148,8 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
     next_ecdf_u_p = np.empty((P, 2))
     next_oracle_u_sGumbel = np.empty((P, 2))
     next_ecdf_u_sGumbel = np.empty((P, 2))
-    next_w_p = np.empty(P)
-    next_w_sg = np.empty(P)
+
+    # --- fixed threshold for the indicator weights -------------------------
 
     for k, t in enumerate(range(R, R+P)):
         ecdf_u_p[k] = ecdf_transform(samples_p[t-R:t])
@@ -163,9 +161,6 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
         next_oracle_u_sGumbel[k] = total_oracle_u_sGumbel[t]
         next_ecdf_u_sGumbel[k] = ecdf_transform(np.vstack([samples_sGumbel[t - R:t], samples_sGumbel[t]]))[-1]
 
-    for k in range(P):
-        next_w_p[k] = 1.0 if (next_oracle_u_p[k, 0] + next_oracle_u_p[k, 1]) <= ... else 0.0
-        next_w_sg[k] = 1.0 if (next_oracle_u_sGumbel[k, 0] + next_oracle_u_sGumbel[k, 1]) <= ... else 0.0
 
 
     MC_SIZE_FOR_FW_BAR = 10000
@@ -182,6 +177,8 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
         "f", "g", "p", "sJoe", "sJoe_localized", "sJoe_local", "Clayton", "sGumbel"]}
 
     for k in range(P):
+        # Right-tail probabilities corresponding to the same thresholds used for
+        # the indicator weights above.
         fw_bar_dict["f"][k] = outside_prob_from_sample(sample_f, q_threshold)
         fw_bar_dict["g"][k] = outside_prob_from_sample(sample_g, q_threshold)
         fw_bar_dict["p"][k] = outside_prob_from_sample(sample_p, q_threshold)
@@ -227,18 +224,19 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
         },
     }
 
-    reference_masks = {
-        "oracle": next_w_p,
-        "ecdf": next_w_p,  # use oracle-based weight for ECDF PITs
-        "sGumbel_oracle": next_w_sg,
-        "sGumbel_ecdf": next_w_sg,
-    }
 
     next_obs = {
         "oracle": next_oracle_u_p,
         "ecdf": next_ecdf_u_p,
         "sGumbel_oracle": next_oracle_u_sGumbel,
         "sGumbel_ecdf": next_ecdf_u_sGumbel,
+    }
+
+    q_vals = {
+        "oracle": q_threshold,
+        "ecdf": q_threshold,
+        "sGumbel_oracle": q_threshold,
+        "sGumbel_ecdf": q_threshold,
     }
 
     score_vecs = {score: {model: {} for model in model_info} for score in score_types}
@@ -254,13 +252,25 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
             cls_v = np.empty(P)
             for k in range(P):
                 u_next = next_obs[pit][k]
-                w_win = reference_masks[pit][k]
                 fw_bar = fw_bar_dict[model][k]
+                q_val = q_vals[pit]
                 log_v[k] = score_vectors(u_next[np.newaxis, :], family, "LogS", **params)
-                cs_v[k] = score_vectors(u_next[np.newaxis, :], family, "CS", w=np.array([w_win]), Fw_bar=fw_bar,
-                                        **params)
-                cls_v[k] = score_vectors(u_next[np.newaxis, :], family, "CLS", w=np.array([w_win]), Fw_bar=fw_bar,
-                                         **params)
+                cs_v[k] = score_vectors(
+                    u_next[np.newaxis, :],
+                    family,
+                    "CS",
+                    q_val=q_val,
+                    Fw_bar=fw_bar,
+                    **params,
+                )
+                cls_v[k] = score_vectors(
+                    u_next[np.newaxis, :],
+                    family,
+                    "CLS",
+                    q_val=q_val,
+                    Fw_bar=fw_bar,
+                    **params,
+                )
             for name, vec in zip(["LogS", "CS", "CLS"], [log_v, cs_v, cls_v]):
                 score_vecs[name][model][pit] = vec
                 score_sums[name][model][pit] = float(np.sum(vec))
