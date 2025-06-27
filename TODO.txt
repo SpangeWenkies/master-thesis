@@ -5,7 +5,8 @@ To do:
 
     LogS van Clayton - sJoe KL tuned werkt niet
         Same data is used for tuning & scoring --> sJoe is over-fitted
-        S
+        DM stat is soms zero variance -> zorgt dit voor verkeerde rej_freq? ; komt dit door te klein score verschil door afronden?
+        RuntimeWarning: divide by zero encountered in scalar divide (1.0 - p_R) * np.log((1.0 - p_R) / (1.0 - f_R))
 
     Bivariate bonferroni bounds?
 

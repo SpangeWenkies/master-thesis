@@ -16,6 +16,7 @@ q_threshold = 0.05  # percentile to create the region mask
 kl_match_optim_method = "Powell"  # scipy minimize optimization method: Powell, COBYLA (bad option), L-BFGS-B (bad option)
 bb1_param_bounds = [(0.001, 7), (1.001, 7)] # R VineCopula bb1 par and par2 bounds
 sJoe_param_bounds = [(1.001, 30)]
+tune_size = 10000
 
 pit_types = ["oracle", "ecdf"]
 score_types = ["LogS", "CS", "CLS"]

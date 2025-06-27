@@ -20,11 +20,11 @@ mean = np.zeros(100)
 
 for i in range(100):
     # --- 1. draw a BIG Monte-Carlo sample for tuning only ------------------
-    u_big = sim_sGumbel_PITs(2_000_000, theta_sGumbel)
+    u_big = sim_sGumbel_PITs(1000, theta_sGumbel)
     mask_big = sample_region_mask(u_big, q_threshold, df)
 
-    pdf_sGumbel = sGumbel_copula_pdf_from_PITs(u_big, theta_sGumbel)
-    pdf_clayton = Clayton_copula_pdf_from_PITs(u_big, theta_Clayton)
+    pdf_sGumbel = lambda u: sGumbel_copula_pdf_from_PITs(u, theta_sGumbel)
+    pdf_clayton = lambda u: Clayton_copula_pdf_from_PITs(u, theta_Clayton)
 
     # feed ONLY u_big to tune_sJoe_params  --------------------------
     theta_sJoe, theta_sJoe_loc, theta_sJoe_local = tune_sJoe_params(
@@ -36,14 +36,17 @@ for i in range(100):
     )
 
     # --- 2. when you build the score differences, use FRESH data -----------
-    u_eval = sim_sGumbel_PITs(n, theta_sGumbel)   # new RNG
+    u_eval = sim_sGumbel_PITs(1000, theta_sGumbel)   # new RNG
 
-    pdf_sJoe = sJoe_copula_pdf_from_PITs(u_eval, theta_sJoe)
-    pdf_Clayton_eval = Clayton_copula_pdf_from_PITs(u_eval, theta_Clayton)
+    pdf_sJoe = sJoe_copula_pdf_from_PITs(u_big, theta_sJoe)
+    pdf_Clayton_eval = Clayton_copula_pdf_from_PITs(u_big, theta_Clayton)
 
-    LogS_sJoe    = LogS(pdf_sJoe)
-    LogS_Clayton = LogS(pdf_clayton)
+    LogS_sJoe = LogS(pdf_sJoe)
+    LogS_Clayton = LogS(pdf_Clayton_eval)
 
     mean[i] = np.mean(LogS_sJoe - LogS_Clayton)
 
+    print(i,"/100")
+
 plt.hist(mean)
+plt.show()

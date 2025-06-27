@@ -8,7 +8,8 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from tqdm import tqdm
 
-from src.utils.copula_utils import average_threshold, make_fixed_region_mask, sJoe_copula_pdf_from_PITs
+from src.utils.copula_utils import average_threshold, make_fixed_region_mask, sJoe_copula_pdf_from_PITs, \
+    sim_student_t_copula_PITs
 from itertools import combinations
 import logging
 from scipy.stats import t as student_t
@@ -26,6 +27,7 @@ from utils.copula_utils import (
     Clayton_copula_pdf_from_PITs,
     sJoe_copula_pdf_from_PITs,
     ecdf_transform,
+    sample_region_mask
 )
 from utils.scoring import (
     LogS,
@@ -57,6 +59,7 @@ from score_sim_config import (
     pair_to_keys,
     pair_to_keys_size,  # Is used here for cdf plot of just f-g
     score_score_keys,
+    tune_size,
 )
 
 SCORE_FUNCS = {"LogS": LogS, "CS": CS, "CLS": CLS}
@@ -92,7 +95,10 @@ def simulate_one_rep_total(
     f_rho,
     g_rho,
     p_rho,
-    theta_sg,
+    theta_sJoe,
+    theta_sJoe_loc,
+    theta_sJoe_local,
+    theta_sGumbel,
     theta_Clayton,
 ):
     """Simulate a single repetition without rolling windows."""
@@ -114,23 +120,12 @@ def simulate_one_rep_total(
         else:
             raise ValueError(f"Unknown score type: {sc}")
 
-    # === 1. KL match sJoe copulas on a fresh sample ===
-    kl_sample = sim_sGumbel_PITs(2_000_000, theta_sg)
-    kl_mask = sample_region_mask(kl_sample, q_threshold, df)
-    pdf_sg_big = sGumbel_copula_pdf_from_PITs(kl_sample, theta_sg)
-    pdf_clayton_big = Clayton_copula_pdf_from_PITs(kl_sample, theta_Clayton)
-    (
-        theta_sJoe,
-        theta_sJoe_loc,
-        theta_sJoe_local,
-    ) = tune_sJoe_params([kl_sample], [kl_mask], pdf_sg_big, pdf_clayton_big)
-
     # === 2. Generate evaluation sample ===
     samples_p = multivariate_t.rvs(loc=[0,0], shape=[[1,0],[0,1]], df=df, size=n)
     oracle_p = student_t.cdf(samples_p, df)
     ecdf_p = ecdf_transform(samples_p)
 
-    oracle_sg = sim_sGumbel_PITs(n, theta_sg)
+    oracle_sg = sim_sGumbel_PITs(n, theta_sGumbel)
     samples_sg = np.column_stack([
         student_t.ppf(oracle_sg[:,0], df),
         student_t.ppf(oracle_sg[:,1], df),
@@ -165,8 +160,8 @@ def simulate_one_rep_total(
                        "ecdf": (ecdf_sg, {"theta": theta_sJoe_local})},
         "Clayton": {"oracle": (oracle_sg, {"theta": theta_Clayton}),
                                "ecdf": (ecdf_sg, {"theta": theta_Clayton})},
-        "sGumbel": {"oracle": (oracle_sg, {"theta": theta_sg}),
-                    "ecdf": (ecdf_sg, {"theta": theta_sg})},
+        "sGumbel": {"oracle": (oracle_sg, {"theta": theta_sGumbel}),
+                    "ecdf": (ecdf_sg, {"theta": theta_sGumbel})},
     }
 
     score_vecs = {s: {m: {} for m in model_info} for s in score_types}
@@ -198,6 +193,19 @@ def simulate_one_rep_total(
     return {"sums": score_sums, "vecs": score_vecs, "diff_vecs": diff_vecs}
 
 def main():
+
+    # === 1. KL match sJoe copulas on a fresh sample ===
+    kl_sample = sim_sGumbel_PITs(tune_size, theta_sGumbel)
+    kl_mask_sg = sample_region_mask(kl_sample, q_threshold, df)
+    pdf_sg_big = lambda u: sGumbel_copula_pdf_from_PITs(u, theta_sGumbel)
+    pdf_clayton_big = lambda u: Clayton_copula_pdf_from_PITs(u, theta_Clayton)
+    (
+        theta_sJoe,
+        theta_sJoe_loc,
+        theta_sJoe_local,
+    ) = tune_sJoe_params([kl_sample], [kl_mask_sg], pdf_sg_big, pdf_clayton_big)
+
+
     results = []
     with ProcessPoolExecutor() as exe:
         futures = [
@@ -208,6 +216,9 @@ def main():
                 f_rho,
                 g_rho,
                 p_rho,
+                theta_sJoe,
+                theta_sJoe_loc,
+                theta_sJoe_local,
                 theta_sGumbel,
                 theta_Clayton,
             )

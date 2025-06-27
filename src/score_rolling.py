@@ -55,6 +55,7 @@ from score_sim_config import (
     all_copula_models,
     copula_models_for_plots,
     score_score_keys,
+    tune_size
 )
 
 SCORE_FUNCS = {"LogS": LogS, "CS": CS, "CLS": CLS}
@@ -118,11 +119,11 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
         else:
             raise ValueError(f"Unknown score_type: {score_type}")
 
-    # === 1. KL match sJoe copulas using a fresh Monte Carlo sample ===
-    kl_sample = sim_sGumbel_PITs(2_000_000, theta_sGumbel)
+    # === 1. KL match sJoe copulas on a fresh sample ===
+    kl_sample = sim_sGumbel_PITs(tune_size, theta_sGumbel)
     kl_mask = sample_region_mask(kl_sample, q_threshold, df)
-    pdf_sg_big = sGumbel_copula_pdf_from_PITs(kl_sample, theta_sGumbel)
-    pdf_clayton_big = Clayton_copula_pdf_from_PITs(kl_sample, theta_Clayton)
+    pdf_sg_big = lambda u: sGumbel_copula_pdf_from_PITs(u, theta_sGumbel)
+    pdf_clayton_big = lambda u: Clayton_copula_pdf_from_PITs(u, theta_Clayton)
     (
         theta_sJoe,
         theta_sJoe_localized,
@@ -145,8 +146,6 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
     oracle_u_p = np.empty((P, R, 2))
     ecdf_u_sGumbel = np.empty((P, R, 2))
     oracle_u_sGumbel = np.empty((P, R, 2))
-    mask_p = np.empty((P, R))
-    mask_sg = np.empty((P, R))
     next_oracle_u_p = np.empty((P, 2))
     next_ecdf_u_p = np.empty((P, 2))
     next_oracle_u_sGumbel = np.empty((P, 2))
@@ -164,15 +163,9 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
         next_oracle_u_sGumbel[k] = total_oracle_u_sGumbel[t]
         next_ecdf_u_sGumbel[k] = ecdf_transform(np.vstack([samples_sGumbel[t - R:t], samples_sGumbel[t]]))[-1]
 
-    avg_q_p = np.empty(P)
-    avg_q_sg = np.empty(P)
     for k in range(P):
-        avg_q_p[k] = average_threshold([oracle_u_p[k]], q_threshold)
-        avg_q_sg[k] = average_threshold([oracle_u_sGumbel[k]], q_threshold)
-        mask_p[k] = make_fixed_region_mask(oracle_u_p[k], avg_q_p[k])
-        mask_sg[k] = make_fixed_region_mask(oracle_u_sGumbel[k], avg_q_sg[k])
-        next_w_p[k] = 1.0 if (next_oracle_u_p[k, 0] + next_oracle_u_p[k, 1]) <= avg_q_p[k] else 0.0
-        next_w_sg[k] = 1.0 if (next_oracle_u_sGumbel[k, 0] + next_oracle_u_sGumbel[k, 1]) <= avg_q_sg[k] else 0.0
+        next_w_p[k] = 1.0 if (next_oracle_u_p[k, 0] + next_oracle_u_p[k, 1]) <= ... else 0.0
+        next_w_sg[k] = 1.0 if (next_oracle_u_sGumbel[k, 0] + next_oracle_u_sGumbel[k, 1]) <= ... else 0.0
 
 
     MC_SIZE_FOR_FW_BAR = 10000
@@ -189,16 +182,14 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
         "f", "g", "p", "sJoe", "sJoe_localized", "sJoe_local", "Clayton", "sGumbel"]}
 
     for k in range(P):
-        q_p = avg_q_p[k]
-        q_sg = avg_q_sg[k]
-        fw_bar_dict["f"][k] = outside_prob_from_sample(sample_f, float(q_p))
-        fw_bar_dict["g"][k] = outside_prob_from_sample(sample_g, float(q_p))
-        fw_bar_dict["p"][k] = outside_prob_from_sample(sample_p, float(q_p))
-        fw_bar_dict["sJoe"][k] = outside_prob_from_sample(sample_sJoe, float(q_sg))
-        fw_bar_dict["sJoe_localized"][k] = outside_prob_from_sample(sample_sJoe_localized, float(q_sg))
-        fw_bar_dict["sJoe_local"][k] = outside_prob_from_sample(sample_sJoe_local, float(q_sg))
-        fw_bar_dict["Clayton"][k] = outside_prob_from_sample(sample_Clayton, float(q_sg))
-        fw_bar_dict["sGumbel"][k] = outside_prob_from_sample(sample_sg, float(q_sg))
+        fw_bar_dict["f"][k] = outside_prob_from_sample(sample_f, q_threshold)
+        fw_bar_dict["g"][k] = outside_prob_from_sample(sample_g, q_threshold)
+        fw_bar_dict["p"][k] = outside_prob_from_sample(sample_p, q_threshold)
+        fw_bar_dict["sJoe"][k] = outside_prob_from_sample(sample_sJoe, q_threshold)
+        fw_bar_dict["sJoe_localized"][k] = outside_prob_from_sample(sample_sJoe_localized, q_threshold)
+        fw_bar_dict["sJoe_local"][k] = outside_prob_from_sample(sample_sJoe_local, q_threshold)
+        fw_bar_dict["Clayton"][k] = outside_prob_from_sample(sample_Clayton, q_threshold)
+        fw_bar_dict["sGumbel"][k] = outside_prob_from_sample(sample_sg, q_threshold)
 
     # Store rolling-window PITs and model parameters
     model_info = {
@@ -456,9 +447,9 @@ if __name__ == '__main__':
             )
 
     # === Plot score differences for sJoe - Clayton to visually inspect results ===
-    # for sc in score_types:
-    #     for key in list(diffs[sc].keys()):
-    #         diffs[sc][key] = div_by_stdev(str(key), diffs[sc][key])
+    for sc in score_types:
+        for key in list(diffs[sc].keys()):
+            diffs[sc][key] = div_by_stdev(str(key), diffs[sc][key])
 
     diff_keys = sorted({k for d in diffs.values() for k in d})
     score_dicts = make_score_dicts(diffs, diff_keys, score_types)
