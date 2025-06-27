@@ -13,10 +13,11 @@ from .copula_utils import (
 
 def _fw_bar(mF: np.ndarray, w: np.ndarray) -> float:
     """Return P(Y not in R) given densities mF and 0/1 mask w."""
-    F_total    = np.sum(mF)             # ≈ ∫ f(y) dy  over sample points
-    F_outside  = np.sum(mF * (1 - w))   # mass outside region
-    F_outside  = max(F_outside, 1e-100)
-    return F_outside / F_total          # right-tail probability
+    F_total = max(np.sum(mF), 1e-100)      # ≈ ∫ f(y) dy  over sample points
+    F_outside = np.sum(mF * (1 - w))       # mass outside region
+    F_outside = max(F_outside, 1e-100)
+    F_outside = min(F_outside, F_total)    # numerical guard
+    return F_outside / F_total            # right-tail probability
 
 def outside_prob_from_sample(sample: np.ndarray, q_val: float) -> float:
     """Return ``P(U1 + U2 > q_val)`` estimated from PIT samples."""
@@ -104,8 +105,10 @@ def CLS(
     w = (u[:, 0] + u[:, 1] <= q_val).astype(float)
     if Fw_bar is None:
         Fw_bar = _fw_bar(mF, w)
+    # ensure Fw_bar strictly within (0,1) to avoid log(0)
+    Fw_bar = float(np.clip(Fw_bar, 1e-12, 1.0 - 1e-12))
     mF = np.clip(mF, 1e-100, None)
-    return w * (np.log(mF) - np.log(1 - Fw_bar))
+    return w * (np.log(mF) - np.log(1.0 - Fw_bar))
 
 
 def estimate_localized_kl(u_samples: np.ndarray, pdf_p, pdf_f, region_mask: np.ndarray) -> float:
