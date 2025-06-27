@@ -176,8 +176,8 @@ def sim_sJoe_PITs(n: int, theta: float) -> np.ndarray:
     ndarray of shape (n, 2)
         Simulated PIT pairs ``(U_1, U_2)``.
     """
-    if not 0 <= theta <= 15:
-        raise ValueError(f"sClayton theta={theta:.4f} must be in [0, 15]")
+    if not 1 < theta <= 30:
+        raise ValueError(f"sClayton theta={theta:.4f} must be in (1, 30]")
     numpy2ri.activate()
     ro.r.assign('theta', theta)
     ro.r.assign('n', n)
@@ -328,8 +328,8 @@ def sJoe_copula_pdf_from_PITs(u: np.ndarray, theta: float) -> np.ndarray:
     ndarray of shape (n,)
         Copula density evaluated at each row of ``u``.
     """
-    if not 0<= theta <= 15:
-        raise ValueError(f"sJoe theta={theta:.4f} must be in [0, 15]")
+    if not 1 < theta <= 30:
+        raise ValueError(f"sJoe theta={theta:.4f} must be in (1, 30]")
     numpy2ri.activate()
     ro.globalenv['u_data'] = u
     ro.globalenv['theta'] = theta

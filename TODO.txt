@@ -1,18 +1,11 @@
 To do:
+    Presentatie opbouwen vanaf het begin
+        Verhaal van afgelopen meeting er in verwerken
+        Zodra af, de plots er in zetten
 
-    Code ramon (2025 paper) gebruikt geen copula's
-        Wel een multivariate part die te gebruiken is
-
-    KLIC matching doen
-        Voor de CS en CLS moet een local(ized) KLIC gebruikt worden!
-            De een moet localized en de ander local
-            implement de local in de cls scores calc
-
-    De region masks kunnen voor non-finite values zorgen in CS score doordat de weight mask leeg is???
-        validate whether the f PITs (when transformed back via student_t.ppf) ever fall into the sGumbel-defined masked region
-
-    In de simulate one rep worden de theta en delta van de bb1 (local(ized)) KL matching niet gebruikt
-        parser broke because of the underscores in the first and last name of pair now
+    LogS van Clayton - sJoe KL tuned werkt niet
+        Same data is used for tuning & scoring --> sJoe is over-fitted
+        S
 
     Bivariate bonferroni bounds?
 
