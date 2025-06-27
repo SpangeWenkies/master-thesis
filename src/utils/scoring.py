@@ -39,7 +39,8 @@ def LogS(mF: np.ndarray) -> np.ndarray:
     ndarray
         ``log f(y)`` with zeros avoided by clipping ``mF``.
     """
-    mF = np.clip(mF, 1e-100, None)
+    mF = np.asarray(mF).copy()
+    mF[mF == 0] = 1e-100  # avoid numerical zeros
     return np.log(mF)
 
 
@@ -72,7 +73,8 @@ def CS(
     w = (u[:, 0] + u[:, 1] <= q_val).astype(float)
     if Fw_bar is None:
         Fw_bar = _fw_bar(mF, w)
-    mF = np.clip(mF, 1e-100, None)
+    mF = np.asarray(mF).copy()
+    mF[mF == 0] = 1e-100  # avoid numerical zeros
     return w * np.log(mF) + (1 - w) * np.log(Fw_bar)
 
 
@@ -105,9 +107,9 @@ def CLS(
     w = (u[:, 0] + u[:, 1] <= q_val).astype(float)
     if Fw_bar is None:
         Fw_bar = _fw_bar(mF, w)
-    # ensure Fw_bar strictly within (0,1) to avoid log(0)
-    Fw_bar = float(np.clip(Fw_bar, 1e-12, 1.0 - 1e-12))
-    mF = np.clip(mF, 1e-100, None)
+    # ensure strictly positive density values to avoid log(0)
+    mF = np.asarray(mF).copy()
+    mF[mF == 0] = 1e-100
     return w * (np.log(mF) - np.log(1.0 - Fw_bar))
 
 
@@ -130,8 +132,8 @@ def estimate_localized_kl(u_samples: np.ndarray, pdf_p, pdf_f, region_mask: np.n
     float
         Localized KL divergence.
     """
-    p = np.clip(pdf_p(u_samples), 1e-300, 1e300)
-    f = np.clip(pdf_f(u_samples), 1e-300, 1e300)
+    p = pdf_p(u_samples)
+    f = pdf_f(u_samples)
     w = region_mask.astype(float)
 
     log_ratio = np.log(p) - np.log(f)
@@ -157,8 +159,8 @@ def estimate_local_kl(u_samples: np.ndarray, pdf_p, pdf_f, region_mask: np.ndarr
     float
         Weighted KL divergence.
     """
-    p_vals = np.clip(pdf_p(u_samples), 1e-300, 1e300)
-    f_vals = np.clip(pdf_f(u_samples), 1e-300, 1e300)
+    p_vals = pdf_p(u_samples)
+    f_vals = pdf_f(u_samples)
     log_ratio = np.log(p_vals) - np.log(f_vals)
 
     w = region_mask.astype(float)  # 0/1 indicator
@@ -343,9 +345,9 @@ def estimate_kl_divergence_copulasv2(
     float
         Non-negative KL divergence (up to MC noise).
     """
-    # --- evaluate and guard against underflow --------------------------------
-    p_vals = np.clip(pdf_p(u_samples), eps, np.inf)
-    q_vals = np.clip(pdf_q(u_samples), eps, np.inf)
+    # --- evaluate densities --------------------------------
+    p_vals = pdf_p(u_samples)
+    q_vals = pdf_q(u_samples)
 
     # --- MC estimate of E_P[log p/q] -----------------------------------------
     log_ratio = np.log(p_vals) - np.log(q_vals)
@@ -384,14 +386,12 @@ def estimate_localized_klv2(
     p_R = float(region_mask.mean())
 
     # ---- probability of R under F (importance sampling) -----------------
-    p_vals = np.clip(pdf_p(u_samples), eps, np.inf)
-    f_vals = np.clip(pdf_f(u_samples), eps, np.inf)
+    p_vals = pdf_p(u_samples)
+    f_vals = pdf_f(u_samples)
     weights = f_vals / p_vals                                #  dF/dP
     f_R = float((weights * region_mask).mean())
 
     # ---- numerical guards ------------------------------------------------
-    p_R = np.clip(p_R, eps, 1.0 - eps)
-    f_R = np.clip(f_R, eps, 1.0 - eps)
 
     # ---- binary-KL formula ----------------------------------------------
     return (
@@ -420,8 +420,8 @@ def estimate_local_klv2(
         KL(P(·|R)‖F(·|R)) ≥ 0, or raises ValueError if no sample falls in R.
     """
     # densities at the P-samples
-    p_vals = np.clip(pdf_p(u_samples), eps, np.inf)
-    f_vals = np.clip(pdf_f(u_samples), eps, np.inf)
+    p_vals = pdf_p(u_samples)
+    f_vals = pdf_f(u_samples)
     log_ratio = np.log(p_vals) - np.log(f_vals)
 
     w = region_mask.astype(float)
@@ -436,6 +436,5 @@ def estimate_local_klv2(
     # ---- 2.  log F(R) / P(R)  -------------------------------------------
     weights = f_vals / p_vals                                #  dF/dP
     f_R = (w * weights).mean()
-    f_R = np.clip(f_R, eps, 1.0 - eps)
 
     return cond_term + np.log(f_R / p_R)
