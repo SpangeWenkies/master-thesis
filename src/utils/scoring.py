@@ -9,6 +9,7 @@ from .copula_utils import (
     sGumbel_copula_pdf_from_PITs,
     bb1_copula_pdf_from_PITs,
     student_t_copula_pdf_from_PITs,
+    sample_region_mask,
 )
 
 def _fw_bar(mF: np.ndarray, w: np.ndarray) -> float:
@@ -48,6 +49,7 @@ def CS(
     mF: np.ndarray,
     u: np.ndarray,
     q_val: float,
+    df: int | float,
     Fw_bar: float | None = None,
 ) -> np.ndarray:
     """Return censored logarithmic score contributions.
@@ -59,8 +61,7 @@ def CS(
     u : ndarray
         PIT pairs associated with the densities.
     q_val : float
-        Threshold used to construct the binary weight ``w`` via
-        ``u[:,0] + u[:,1] <= q_val``.
+        Threshold used to construct the binary weight
     Fw_bar : float, optional
         Right-tail probability ``\bar F_w``. If ``None`` it is estimated from
         ``mF`` and the internally computed ``w``.
@@ -70,7 +71,7 @@ def CS(
     ndarray
         Censored log score ``w * log f(y) + (1-w) * log \bar F_w``.
     """
-    w = (u[:, 0] + u[:, 1] <= q_val).astype(float)
+    w = sample_region_mask(u, q_val, df).astype(float)
     if Fw_bar is None:
         Fw_bar = _fw_bar(mF, w)
     mF = np.asarray(mF).copy()
@@ -82,6 +83,7 @@ def CLS(
     mF: np.ndarray,
     u: np.ndarray,
     q_val: float,
+    df: int | float,
     Fw_bar: float | None = None,
 ) -> np.ndarray:
     """Return conditional logarithmic score contributions.
@@ -93,8 +95,7 @@ def CLS(
     u : ndarray
         PIT pairs associated with the densities.
     q_val : float
-        Threshold used to construct the binary weight ``w`` via
-        ``u[:,0] + u[:,1] <= q_val``.
+        Threshold used to construct the binary weight
     Fw_bar : float, optional
         Right-tail probability ``\bar F_w``. If ``None`` it is estimated from
         ``mF`` and the internally computed ``w``.
@@ -104,7 +105,7 @@ def CLS(
     ndarray
         Conditional log score ``w * (log f(y) - log(1-\bar F_w))``.
     """
-    w = (u[:, 0] + u[:, 1] <= q_val).astype(float)
+    w = sample_region_mask(u, q_val, df).astype(float)
     if Fw_bar is None:
         Fw_bar = _fw_bar(mF, w)
     # ensure strictly positive density values to avoid log(0)

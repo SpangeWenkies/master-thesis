@@ -113,9 +113,9 @@ def simulate_one_rep_total(
         if sc == "LogS":
             return float(np.sum(score_func(mF)))
         elif sc == "CS":
-            return float(np.sum(score_func(mF, u, q_val, fw_bar)))
+            return float(np.sum(score_func(mF, u, q_val, df, fw_bar)))
         elif sc == "CLS":
-            return float(np.sum(score_func(mF, u, q_val, fw_bar)))
+            return float(np.sum(score_func(mF, u, q_val, df, fw_bar)))
         else:
             raise ValueError(f"Unknown score type: {sc}")
 

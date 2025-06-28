@@ -8,6 +8,16 @@ To do:
         DM stat is soms zero variance -> zorgt dit voor verkeerde rej_freq? ; komt dit door te klein score verschil door afronden?
         RuntimeWarning: divide by zero encountered in scalar divide (1.0 - p_R) * np.log((1.0 - p_R) / (1.0 - f_R))
 
+        In KL test checken kwam het er op neer dat de CS en CLS niet werken
+        Lijkt er op dat misschien de local(ized) KL divergences niet correct zijn
+            check met de 2025 paper
+        Lijkt er op dat het misschien aan de indicator formule ligt --> X
+            je kan niet als je op de marginals sum je quantile zet deze ook gebruiken voor de pits sum
+            dat zou alleen zo zijn als de marginals uniform zijn en PIT transform een linear transform is
+            Goede manier zou zijn:
+                generate PITs, convert naar marginals, compute sum & find q_0.05 (kan analytically)
+                kijk naar de PIT samples die voor X + Y < q_0.05 zorgen, geef deze PIT sample pairs weight 1 en anders 0
+
     Bivariate bonferroni bounds?
 
 To do morgen:
