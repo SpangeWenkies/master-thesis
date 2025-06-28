@@ -21,7 +21,7 @@ To do:
     Bivariate bonferroni bounds?
 
 To do morgen:
-    Fix het tweede deel van de simulation die nu kapot lijkt te zijn
+    Fix het CS, CLS deel van de simulation die nu kapot lijkt te zijn
 
 Boundary uncertainty extension:
     Maak de restriction transformation met een andere copula dan de f of g voor size en power test credibility (Mitchell & Wealle example)
@@ -40,11 +40,14 @@ Scriptie meeting 15-5:
     Vraag ramon naar hoe hij de numerical integral doet
     Hangt het q'tje nu ook niet af van de f of g? --> maakt waarschijnlijk niet uit
 
-Code algemeen:
-	Als too many configs maak dan een class of een namespace
-	Cache results of BB1 PDF evaluations over large u arrays.
-        Consider vectorized PDF evaluation in R using BiCopPDF() once over a full sample batch.
-        Investigate whether BB1 copula samples and densities can be evaluated once and reused.
+Afgelopen meeting:
+    PLOT CDF
+    Compare first innovations (ARMA-GARCH vb (V)AR(1) SCOMDY) vs residuals effect on the ECDF vs ORACLE plots ()
+    Lastly introduce boundary uncertainty for (innov +( ECDF or ORACLE )) or (reside + (ECDF or oracle))
+    Robustness checks at end of paper
+    Write on the effect of correctly choosing which model to estimate (vb true = AR1, but estimated is AR2) -> also ECDF vs inverse of AR(1) if you assume AR(1) is true
+    Slides must be on combinations of uncertainties in the models
+    In slides show emperical u vs oracle u (show multiple estimated u lines)
 
 Scriptie algemeen:
 BLIJF SCHRIJVEN IN OVERLEAF
@@ -79,19 +82,4 @@ Notes/vragen:
 
     Moet ik uberhaupt kijken naar smoothing van ECDF door quantile regression of kernel interpolation. Of is dat alleen handig als we een percentile willen zoeken?
 
-PLOT CDF
-Compare first innovations (ARMA-GARCH vb (V)AR(1) SCOMDY) vs residuals effect on the ECDF vs ORACLE plots ()
-Lastly introduce boundary uncertainty for (innov +( ECDF or ORACLE )) or (reside + (ECDF or oracle))
-Robustness checks at end of paper
-Write on the effect of correctly choosing which model to estimate (vb true = AR1, but estimated is AR2) -> also ECDF vs inverse of AR(1) if you assume AR(1) is true
-Slides must be on combinations of uncertainties in the models
-In slides show emperical u vs oracle u (show multiple estimated u lines)
 
-Size discrepancy plots:
-    Lijkt of de CS size discrepancy totaal niet klopt.
-    De size discrepancies zijn allemaal op een grid van 0.01? hoort volgens mij veel meer te verschillen door de rejection rate
-    De 95% point-wise significance intervals moeten worden laten zien ook.
-    Vraag chat ipv alleen codex
-    Zoek uit wat te doen met de rolling window??? kutzooi
-    What does score_vectors do in simulate_one_rep
-        maybe changing this broke the point-wise score calc
