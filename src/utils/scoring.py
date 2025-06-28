@@ -70,6 +70,7 @@ def CS(
     q_val: float,
     df: int | float,
     Fw_bar: float | None = None,
+    w = None
 ) -> np.ndarray:
     """Return censored logarithmic score contributions.
 
@@ -90,7 +91,8 @@ def CS(
     ndarray
         Censored log score ``w * log f(y) + (1-w) * log \bar F_w``.
     """
-    w = sample_region_mask(u, q_val, df).astype(float)
+    if w is None:
+        w = sample_region_mask(u, q_val, df).astype(float)
     if Fw_bar is None:
         Fw_bar = _fw_bar(mF, w)
     mF = np.asarray(mF).copy()
@@ -104,6 +106,7 @@ def CLS(
     q_val: float,
     df: int | float,
     Fw_bar: float | None = None,
+    w = None
 ) -> np.ndarray:
     """Return conditional logarithmic score contributions.
 
@@ -124,7 +127,8 @@ def CLS(
     ndarray
         Conditional log score ``w * (log f(y) - log(1-\bar F_w))``.
     """
-    w = sample_region_mask(u, q_val, df).astype(float)
+    if w is None:
+        w = sample_region_mask(u, q_val, df).astype(float)
     if Fw_bar is None:
         Fw_bar = _fw_bar(mF, w)
     # ensure strictly positive density values to avoid log(0)

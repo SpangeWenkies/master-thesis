@@ -83,6 +83,28 @@ MODEL_FAMILY = {
     "sGumbel": "sGumbel",
 }
 
+MC_THRESHOLD = 1_000_000   # Monte-Carlo size for tail threshold
+
+# --- 1a. threshold for Student-t reference (independent copula) -----
+u_ref_t = sim_student_t_copula_PITs(MC_THRESHOLD, rho=0.0, df=df)
+y_ref_t = student_t.ppf(u_ref_t, df).sum(axis=1)
+c_tail_t = np.quantile(y_ref_t, q_threshold)      # e.g. 5 % quantile
+
+# --- 1b. threshold for survival-Gumbel reference --------------------
+u_ref_sg = sim_sGumbel_PITs(MC_THRESHOLD, theta_sGumbel)
+y_ref_sg = student_t.ppf(u_ref_sg, df).sum(axis=1)
+c_tail_sg = np.quantile(y_ref_sg, q_threshold)
+
+def fixed_mask_t(u: np.ndarray) -> np.ndarray:
+    """ROI indicator for PIT pairs evaluated against Student-t reference."""
+    y = student_t.ppf(u, df).sum(axis=1)
+    return (y <= c_tail_t).astype(int)
+
+def fixed_mask_sg(u: np.ndarray) -> np.ndarray:
+    """ROI indicator for PIT pairs evaluated against sGumbel reference."""
+    y = student_t.ppf(u, df).sum(axis=1)
+    return (y <= c_tail_sg).astype(int)
+
 def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
     """
         Helper function for simulating one repetition in multi-threading
@@ -94,11 +116,11 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
             different scores of the candidates and true DGP
         """
 
-    def score_vectors(u_batch: np.ndarray,
+    def compute_score(u_batch: np.ndarray,
                     model_id: str,
+                    pit_type: str,
                     score_type: str,
                     *,
-                    q_val: float,
                     params: dict,
                     df_global: int) -> float:
         """
@@ -123,20 +145,20 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
         df_val = params.get("df", df_global)
 
         # reference density = law that generated u_batch
-        if model_id == "student_t":
-            pdf_ref = lambda v: student_t_copula_pdf_from_PITs(v,
-                                                               rho=0.0,
+        if pit_type in ("oracle", "ecdf"):
+            pdf_ref = lambda v: student_t_copula_pdf_from_PITs(v, rho=0.0,
                                                                df=df_val)
-        else:
+        else:  # "sGumbel_oracle", "sGumbel_ecdf"
             pdf_ref = lambda v: sGumbel_copula_pdf_from_PITs(v,
                                                              theta=theta_sGumbel)
 
+        w = fixed_mask_t(u_batch) if pit_type in ("oracle", "ecdf") else fixed_mask_sg(u_batch)
         Fw_bar = fw_bar_dict[model_id]
 
         if score_type == "CS":
-            return float(np.sum(CS(mF, u_batch, q_val, df_val, Fw_bar)))
+            return float(np.sum(CS(mF, u_batch, df_val, Fw_bar, w=w)))
         else:  # "CLS"
-            return float(np.sum(CLS(mF, u_batch, q_val, df_val, Fw_bar)))
+            return float(np.sum(CLS(mF, u_batch, df_val, Fw_bar, w=w)))
 
     # === 1. KL match sJoe copulas on a fresh sample ===
     kl_sample = sim_sGumbel_PITs(tune_size, theta_sGumbel)
@@ -264,13 +286,6 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
         "sGumbel_ecdf": next_ecdf_u_sGumbel,
     }
 
-    q_vals = {
-        "oracle": q_threshold,
-        "ecdf": q_threshold,
-        "sGumbel_oracle": q_threshold,
-        "sGumbel_ecdf": q_threshold,
-    }
-
     score_vecs = {score: {model: {} for model in model_info} for score in score_types}
     score_sums = {score: {model: {} for model in model_info} for score in score_types}
 
@@ -284,13 +299,12 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
             cls_v = np.empty(P)
             for k in range(P):
                 u_next = next_obs[pit][k]
-                q_val = q_vals[pit]
-                log_v[k] = score_vectors(u_next[np.newaxis, :], model, "LogS",
-                                         q_val=q_val, params=params, df_global=df)
-                cs_v[k] = score_vectors(u_next[np.newaxis, :], model, "CS",
-                                        q_val=q_val, params=params, df_global=df)
-                cls_v[k] = score_vectors(u_next[np.newaxis, :], model, "CLS",
-                                         q_val=q_val, params=params, df_global=df)
+                log_v[k] = compute_score(u_next[np.newaxis,:], model, pit, "LogS",
+                                         params=params, df_global=df)
+                cs_v[k] = compute_score(u_next[np.newaxis,:], model, pit, "CS",
+                                        params=params, df_global=df)
+                cls_v[k] = compute_score(u_next[np.newaxis,:], model, pit, "CLS",
+                                         params=params, df_global=df)
             for name, vec in zip(["LogS", "CS", "CLS"], [log_v, cs_v, cls_v]):
                 score_vecs[name][model][pit] = vec
                 score_sums[name][model][pit] = float(np.sum(vec))
