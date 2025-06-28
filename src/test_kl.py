@@ -67,10 +67,10 @@ for i in range(reps):
     CLS_Clayton = CLS(pdf_Clayton_eval, u_eval, q_threshold, df)
 
     mean[i] = np.mean(LogS_sJoe - LogS_Clayton)
-    mean_localized[i] = np.mean(CS_sJoe_localized - LogS_Clayton)
-    mean_local[i] = np.mean(CLS_sJoe_local - LogS_Clayton)
+    mean_localized[i] = np.mean(CS_sJoe_localized - CS_Clayton)
+    mean_local[i] = np.mean(CLS_sJoe_local - CLS_Clayton)
 
     print(i+1,"/",reps)
 
-plt.hist(mean_local)
+plt.hist(mean_localized, bins=30)
 plt.show()

@@ -20,11 +20,14 @@ def _fw_bar(mF: np.ndarray, w: np.ndarray) -> float:
     F_outside = min(F_outside, F_total)    # numerical guard
     return F_outside / F_total            # right-tail probability
 
-def outside_prob_from_sample(sample: np.ndarray, q_val: float) -> float:
-    """Return ``P(U1 + U2 > q_val)`` estimated from PIT samples."""
-    if sample.ndim != 2 or sample.shape[1] != 2:
-        raise ValueError("sample must be of shape (n, 2)")
-    return float(np.mean(sample[:, 0] + sample[:, 1] > q_val))
+def outside_prob_from_sample(u: np.ndarray, q_level: float, df: int | float) -> float:
+    """
+    Monte-Carlo estimate of  P_f( Y1+Y2 > q_{q_level} )  using a sample
+    drawn **from the same model f** whose density you score.
+    """
+    # same indicator as used inside CS / CLS
+    w = sample_region_mask(u, q_level, df)          # 1 = inside ROI
+    return float((1.0 - w).mean())
 
 
 def LogS(mF: np.ndarray) -> np.ndarray:

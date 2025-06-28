@@ -13,6 +13,7 @@ from itertools import combinations
 import logging
 from scipy.stats import t as student_t
 
+from src.utils.scoring import outside_prob_from_sample
 from utils.optimize_utils import tune_sJoe_params
 
 logger = logging.getLogger(__name__)
@@ -108,13 +109,14 @@ def simulate_one_rep_total(
         pdf_func = PDF_FUNCS[fam]
         pdf_kwargs = {k: kw[k] for k in PDF_PARAMS[fam] if k in kw}
         q_val = kw.get("q_val")
-        fw_bar = kw.get("Fw_bar")
         mF = pdf_func(u, **pdf_kwargs)
         if sc == "LogS":
             return float(np.sum(score_func(mF)))
         elif sc == "CS":
+            fw_bar = outside_prob_from_sample(u, q_val, df)
             return float(np.sum(score_func(mF, u, q_val, df, fw_bar)))
         elif sc == "CLS":
+            fw_bar = outside_prob_from_sample(u, q_val, df)
             return float(np.sum(score_func(mF, u, q_val, df, fw_bar)))
         else:
             raise ValueError(f"Unknown score type: {sc}")
