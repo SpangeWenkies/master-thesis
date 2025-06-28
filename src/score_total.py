@@ -106,20 +106,39 @@ def simulate_one_rep_total(
 
     def score(u, fam, sc, **kw):
         score_func = SCORE_FUNCS[sc]
-        pdf_func = PDF_FUNCS[fam]
+        pdf_raw = PDF_FUNCS[fam]  # bare family function
         pdf_kwargs = {k: kw[k] for k in PDF_PARAMS[fam] if k in kw}
-        q_val = kw.get("q_val")
-        mF = pdf_func(u, **pdf_kwargs)
+
+        # --- make a fully-bound density callable -------------------------
+        pdf_model = lambda v, _f=pdf_raw, _kw=pdf_kwargs: _f(v, **_kw)
+
+        mF = pdf_model(u)  # density values f(u)
+
         if sc == "LogS":
             return float(np.sum(score_func(mF)))
-        elif sc == "CS":
-            fw_bar = outside_prob_from_sample(u, q_val, df)
-            return float(np.sum(score_func(mF, u, q_val, df, fw_bar)))
-        elif sc == "CLS":
-            fw_bar = outside_prob_from_sample(u, q_val, df)
-            return float(np.sum(score_func(mF, u, q_val, df, fw_bar)))
-        else:
-            raise ValueError(f"Unknown score type: {sc}")
+
+        # -------- CS / CLS part below ------------------------------------
+        q_val = kw["q_val"]
+        df_val = df
+
+        # choose reference density that generated the sample 'u'
+        if fam == "student_t":  # oracle_p / ecdf_p batch
+            pdf_ref = lambda v: student_t_copula_pdf_from_PITs(v, rho=0.0,
+                                                               df=df_val)
+        else:  # oracle_sg / ecdf_sg batch
+            pdf_ref = lambda v: sGumbel_copula_pdf_from_PITs(v,
+                                                             theta=theta_sGumbel)
+
+        fw_bar = outside_prob_from_sample(u,
+                                          pdf_model=pdf_model,
+                                          pdf_ref=pdf_ref,
+                                          q_level=q_val,
+                                          df=df_val)
+
+        if sc == "CS":
+            return float(np.sum(CS(mF, u, q_val, df_val, fw_bar)))
+        else:  # CLS
+            return float(np.sum(CLS(mF, u, q_val, df_val, fw_bar)))
 
     # === 2. Generate evaluation sample ===
     samples_p = multivariate_t.rvs(loc=[0,0], shape=[[1,0],[0,1]], df=df, size=n)

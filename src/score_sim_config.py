@@ -2,8 +2,8 @@ from utils.structure_defs import DiffKey
 # Magic numbers
 iSeed = 12085278    # Seed
 
-R = 250    # in-sample window size
-P = 250    # out of sample evaluation period size
+R = 1000    # in-sample window size
+P = 1000    # out of sample evaluation period size
 n = R + P   # total path size (n=250 is year of observations where the market is open)
 df = 5  # degrees of freedom for student-t distributions
 f_rho = -0.3    # candidate correlation coefficient for bivariate student-t copula
@@ -11,7 +11,7 @@ g_rho = 0.3 # candidate correlation coefficient for bivariate student-t copula
 p_rho = 0   # DGP correlation coefficient for bivariate student-t copula
 theta_sGumbel = 2   # DGP dependence parameter for survival Gumbel copula
 theta_Clayton = 3
-reps = 1000 # Simulation repetitions
+reps = 500 # Simulation repetitions
 q_threshold = 0.05  # percentile to create the region mask
 kl_match_optim_method = "Powell"  # scipy minimize optimization method: Powell, COBYLA (bad option), L-BFGS-B (bad option)
 bb1_param_bounds = [(0.001, 7), (1.001, 7)] # R VineCopula bb1 par and par2 bounds

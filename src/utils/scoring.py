@@ -20,14 +20,30 @@ def _fw_bar(mF: np.ndarray, w: np.ndarray) -> float:
     F_outside = min(F_outside, F_total)    # numerical guard
     return F_outside / F_total            # right-tail probability
 
-def outside_prob_from_sample(u: np.ndarray, q_level: float, df: int | float) -> float:
+def outside_prob_from_sample(u: np.ndarray,
+                             pdf_model,          # f(·; θ)
+                             pdf_ref,            # p(·)   – density of the sample ‘u’
+                             q_level: float,
+                             df: int | float) -> float:
     """
-    Monte-Carlo estimate of  P_f( Y1+Y2 > q_{q_level} )  using a sample
-    drawn **from the same model f** whose density you score.
+    Importance–sampling estimate of
+        \bar F_w = ∫ (1-w) f
+    using a sample u ~ p and weights f/p.
+
+    pdf_model, pdf_ref : callables that accept the array ‘u’ and return
+                         the density at each row.
     """
-    # same indicator as used inside CS / CLS
-    w = sample_region_mask(u, q_level, df)          # 1 = inside ROI
-    return float((1.0 - w).mean())
+    if u.ndim != 2 or u.shape[1] != 2:
+        raise ValueError("u must be (n, 2) PIT array")
+
+    # ROI indicator (1 = inside tail region)
+    w = sample_region_mask(u, q_level, df)        # same helper as scores
+
+    f_vals = pdf_model(u)
+    p_vals = pdf_ref(u)
+    weights = f_vals / np.clip(p_vals, 1e-100, None)  # importance weights
+
+    return float(np.mean((1.0 - w) * weights))
 
 
 def LogS(mF: np.ndarray) -> np.ndarray:
