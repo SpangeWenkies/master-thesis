@@ -122,7 +122,8 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
                     score_type: str,
                     *,
                     params: dict,
-                    df_global: int) -> float:
+                    df_global: int,
+                    q_val) -> float:
         """
         Return LogS / CS / CLS for a single  (n,2) PIT batch.
 
@@ -156,9 +157,9 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
         Fw_bar = fw_bar_dict[model_id]
 
         if score_type == "CS":
-            return float(np.sum(CS(mF, u_batch, df_val, Fw_bar, w=w)))
+            return float(np.sum(CS(mF, u_batch, q_val, df_val, Fw_bar, w=w)))
         else:  # "CLS"
-            return float(np.sum(CLS(mF, u_batch, df_val, Fw_bar, w=w)))
+            return float(np.sum(CLS(mF, u_batch, q_val, df_val, Fw_bar, w=w)))
 
     # === 1. KL match sJoe copulas on a fresh sample ===
     kl_sample = sim_sGumbel_PITs(tune_size, theta_sGumbel)
@@ -183,42 +184,33 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
         student_t.ppf(total_oracle_u_sGumbel[:, 1], df)
     ])
 
-    MC_SIZE_FW = 10_000  # 10k is enough – change if you like
 
-    def simple_outside_prob(sample: np.ndarray, q_level: float, df_val: int) -> float:
-        """P(Y1+Y2 > q) from PIT sample drawn *from the same model*."""
-        w = sample_region_mask(sample, q_level, df_val)
-        return float(np.mean(1.0 - w))  # outside = 1-w
+    MC_SIZE_FW = 50_000  # bigger = smoother importance weights
 
-    fw_bar_dict: dict[str, float] = {}
+    u_ref_t = sim_student_t_copula_PITs(MC_SIZE_FW, rho=0.0, df=df)
+    u_ref_sg = sim_sGumbel_PITs(MC_SIZE_FW, theta_sGumbel)
+    pdf_ref_t = lambda v: student_t_copula_pdf_from_PITs(v, rho=0.0, df=df)
+    pdf_ref_sg = lambda v: sGumbel_copula_pdf_from_PITs(v, theta=theta_sGumbel)
 
-    # --- Student-t models -------------------------------------------------
-    fw_bar_dict["f"] = simple_outside_prob(
-        sim_student_t_copula_PITs(MC_SIZE_FW, f_rho, df), q_threshold, df
-    )
-    fw_bar_dict["g"] = simple_outside_prob(
-        sim_student_t_copula_PITs(MC_SIZE_FW, g_rho, df), q_threshold, df
-    )
-    fw_bar_dict["p"] = simple_outside_prob(
-        sim_student_t_copula_PITs(MC_SIZE_FW, p_rho, df), q_threshold, df
-    )
+    fw_bar_dict: dict[str, float] = {}  # filled just once per replication
 
-    # --- sGumbel and its sJoe / Clayton derivatives ----------------------
-    fw_bar_dict["sGumbel"] = simple_outside_prob(
-        sim_sGumbel_PITs(MC_SIZE_FW, theta_sGumbel), q_threshold, df
-    )
-    fw_bar_dict["sJoe"] = simple_outside_prob(
-        sim_sJoe_PITs(MC_SIZE_FW, theta_sJoe), q_threshold, df
-    )
-    fw_bar_dict["sJoe_localized"] = simple_outside_prob(
-        sim_sJoe_PITs(MC_SIZE_FW, theta_sJoe_localized), q_threshold, df
-    )
-    fw_bar_dict["sJoe_local"] = simple_outside_prob(
-        sim_sJoe_PITs(MC_SIZE_FW, theta_sJoe_local), q_threshold, df
-    )
-    fw_bar_dict["Clayton"] = simple_outside_prob(
-        sim_Clayton_PITs(MC_SIZE_FW, theta_Clayton), q_threshold, df
-    )
+    fw_bar_dict["f"] = outside_prob_from_sample(u_ref_t, pdf_model = lambda v: student_t_copula_pdf_from_PITs(v, rho=f_rho, df=df),
+                                                pdf_ref = pdf_ref_t,q_level = q_threshold,df = df)
+    fw_bar_dict["g"] = outside_prob_from_sample(u_ref_t, pdf_model = lambda v: student_t_copula_pdf_from_PITs(v, rho=g_rho, df=df),
+                                                pdf_ref = pdf_ref_t, q_level = q_threshold, df = df)
+    fw_bar_dict["p"] = outside_prob_from_sample(u_ref_t, pdf_model = lambda v: student_t_copula_pdf_from_PITs(v, rho=p_rho, df=df),
+                                                 pdf_ref = pdf_ref_t, q_level = q_threshold, df = df)
+    fw_bar_dict["sGumbel"] = outside_prob_from_sample(u_ref_sg, pdf_model = lambda v: sGumbel_copula_pdf_from_PITs(v, theta=theta_sGumbel),
+                                                      pdf_ref = pdf_ref_sg, q_level = q_threshold, df = df)
+    fw_bar_dict["Clayton"] = outside_prob_from_sample(u_ref_sg, pdf_model = lambda v: Clayton_copula_pdf_from_PITs(v, theta=theta_Clayton),
+                                                      pdf_ref = pdf_ref_sg, q_level = q_threshold, df = df)
+    fw_bar_dict["sJoe"] = outside_prob_from_sample(u_ref_sg, pdf_model = lambda v: sJoe_copula_pdf_from_PITs(v, theta=theta_sJoe),
+                                                   pdf_ref = pdf_ref_sg, q_level = q_threshold, df = df)
+    fw_bar_dict["sJoe_localized"] = outside_prob_from_sample(u_ref_sg, pdf_model = lambda v: sJoe_copula_pdf_from_PITs(v, theta=theta_sJoe_localized),
+                                                             pdf_ref = pdf_ref_sg, q_level = q_threshold, df = df)
+    fw_bar_dict["sJoe_local"] = outside_prob_from_sample(u_ref_sg, pdf_model = lambda v: sJoe_copula_pdf_from_PITs(v, theta=theta_sJoe_local),
+                                                         pdf_ref = pdf_ref_sg, q_level = q_threshold, df = df)
+
 
     ecdf_u_p = np.empty((P, R, 2))
     oracle_u_p = np.empty((P, R, 2))
@@ -299,12 +291,12 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
             cls_v = np.empty(P)
             for k in range(P):
                 u_next = next_obs[pit][k]
-                log_v[k] = compute_score(u_next[np.newaxis,:], model, pit, "LogS",
-                                         params=params, df_global=df)
-                cs_v[k] = compute_score(u_next[np.newaxis,:], model, pit, "CS",
-                                        params=params, df_global=df)
-                cls_v[k] = compute_score(u_next[np.newaxis,:], model, pit, "CLS",
-                                         params=params, df_global=df)
+                log_v[k] = compute_score(u_next[np.newaxis, :], model, pit, "LogS",
+                                         params=params, df_global=df, q_val=q_threshold)
+                cs_v[k] = compute_score(u_next[np.newaxis, :], model, pit, "CS",
+                                        params=params, df_global=df, q_val=q_threshold)
+                cls_v[k] = compute_score(u_next[np.newaxis, :], model, pit, "CLS",
+                                         params=params, df_global=df, q_val=q_threshold)
             for name, vec in zip(["LogS", "CS", "CLS"], [log_v, cs_v, cls_v]):
                 score_vecs[name][model][pit] = vec
                 score_sums[name][model][pit] = float(np.sum(vec))
