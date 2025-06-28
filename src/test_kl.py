@@ -24,7 +24,7 @@ from utils.scoring import (
 
 from matplotlib import pyplot as plt
 
-reps = 1000
+reps = 500
 big_n = 1000
 eval_n = 1000
 
@@ -72,5 +72,5 @@ for i in range(reps):
 
     print(i+1,"/",reps)
 
-plt.hist(mean_localized)
+plt.hist(mean_local)
 plt.show()

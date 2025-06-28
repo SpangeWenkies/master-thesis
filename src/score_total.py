@@ -198,7 +198,7 @@ def main():
         theta_sJoe,
         theta_sJoe_loc,
         theta_sJoe_local,
-    ) = tune_sJoe_params([kl_sample], [kl_mask_sg], pdf_sg_big, pdf_clayton_big)
+    ) = tune_sJoe_params([kl_sample], [kl_mask_sg], pdf_sg_big, pdf_clayton_big, verbose=True)
 
 
     results = []

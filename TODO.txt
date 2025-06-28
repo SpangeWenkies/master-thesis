@@ -20,6 +20,8 @@ To do:
 
     Bivariate bonferroni bounds?
 
+    Hellinger, chi-squared, ... divergences instead of KL
+
 To do morgen:
     Fix het CS, CLS deel van de simulation die nu kapot lijkt te zijn
 
