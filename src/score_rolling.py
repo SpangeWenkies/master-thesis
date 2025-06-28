@@ -111,7 +111,8 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
         """
 
         score_fn = SCORE_FUNCS[score_type]
-        pdf_raw = PDF_FUNCS[model_id]  # bare family func
+        fam = MODEL_FAMILY[model_id]  # map "f"→"student_t", …
+        pdf_raw = PDF_FUNCS[fam]
         pdf_mod = lambda v, _f=pdf_raw, _kw=params: _f(v, **_kw)
         mF = pdf_mod(u_batch)
 
@@ -130,8 +131,7 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
             pdf_ref = lambda v: sGumbel_copula_pdf_from_PITs(v,
                                                              theta=theta_sGumbel)
 
-        Fw_bar = outside_prob_from_sample(u_batch, pdf_mod, pdf_ref,
-                                          q_level=q_val, df=df_val)
+        Fw_bar = fw_bar_dict[model_id]
 
         if score_type == "CS":
             return float(np.sum(CS(mF, u_batch, q_val, df_val, Fw_bar)))
@@ -160,6 +160,43 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
         student_t.ppf(total_oracle_u_sGumbel[:, 0], df),
         student_t.ppf(total_oracle_u_sGumbel[:, 1], df)
     ])
+
+    MC_SIZE_FW = 10_000  # 10k is enough – change if you like
+
+    def simple_outside_prob(sample: np.ndarray, q_level: float, df_val: int) -> float:
+        """P(Y1+Y2 > q) from PIT sample drawn *from the same model*."""
+        w = sample_region_mask(sample, q_level, df_val)
+        return float(np.mean(1.0 - w))  # outside = 1-w
+
+    fw_bar_dict: dict[str, float] = {}
+
+    # --- Student-t models -------------------------------------------------
+    fw_bar_dict["f"] = simple_outside_prob(
+        sim_student_t_copula_PITs(MC_SIZE_FW, f_rho, df), q_threshold, df
+    )
+    fw_bar_dict["g"] = simple_outside_prob(
+        sim_student_t_copula_PITs(MC_SIZE_FW, g_rho, df), q_threshold, df
+    )
+    fw_bar_dict["p"] = simple_outside_prob(
+        sim_student_t_copula_PITs(MC_SIZE_FW, p_rho, df), q_threshold, df
+    )
+
+    # --- sGumbel and its sJoe / Clayton derivatives ----------------------
+    fw_bar_dict["sGumbel"] = simple_outside_prob(
+        sim_sGumbel_PITs(MC_SIZE_FW, theta_sGumbel), q_threshold, df
+    )
+    fw_bar_dict["sJoe"] = simple_outside_prob(
+        sim_sJoe_PITs(MC_SIZE_FW, theta_sJoe), q_threshold, df
+    )
+    fw_bar_dict["sJoe_localized"] = simple_outside_prob(
+        sim_sJoe_PITs(MC_SIZE_FW, theta_sJoe_localized), q_threshold, df
+    )
+    fw_bar_dict["sJoe_local"] = simple_outside_prob(
+        sim_sJoe_PITs(MC_SIZE_FW, theta_sJoe_local), q_threshold, df
+    )
+    fw_bar_dict["Clayton"] = simple_outside_prob(
+        sim_Clayton_PITs(MC_SIZE_FW, theta_Clayton), q_threshold, df
+    )
 
     ecdf_u_p = np.empty((P, R, 2))
     oracle_u_p = np.empty((P, R, 2))
@@ -248,11 +285,11 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
             for k in range(P):
                 u_next = next_obs[pit][k]
                 q_val = q_vals[pit]
-                log_v[k] = score_vectors(u_next[np.newaxis, :], family, "LogS",
+                log_v[k] = score_vectors(u_next[np.newaxis, :], model, "LogS",
                                          q_val=q_val, params=params, df_global=df)
-                cs_v[k] = score_vectors(u_next[np.newaxis, :], family, "CS",
+                cs_v[k] = score_vectors(u_next[np.newaxis, :], model, "CS",
                                         q_val=q_val, params=params, df_global=df)
-                cls_v[k] = score_vectors(u_next[np.newaxis, :], family, "CLS",
+                cls_v[k] = score_vectors(u_next[np.newaxis, :], model, "CLS",
                                          q_val=q_val, params=params, df_global=df)
             for name, vec in zip(["LogS", "CS", "CLS"], [log_v, cs_v, cls_v]):
                 score_vecs[name][model][pit] = vec
