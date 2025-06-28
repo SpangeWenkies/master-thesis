@@ -94,28 +94,49 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
             different scores of the candidates and true DGP
         """
 
-    def score_vectors(u, model_id, score_type, **kwargs):
-        """Return score value for ``u`` using the generic scoring functions."""
+    def score_vectors(u_batch: np.ndarray,
+                    model_id: str,
+                    score_type: str,
+                    *,
+                    q_val: float,
+                    params: dict,
+                    df_global: int) -> float:
+        """
+        Return LogS / CS / CLS for a single  (n,2) PIT batch.
 
-        # Select scoring and density functions
-        score_func = SCORE_FUNCS[score_type]
-        pdf_func = PDF_FUNCS[model_id]
+        u_batch` is drawn from either the ρ=0 Student-t copula
+        or from the sGumbel copula, depending on the outer loop.
 
-        # Separate parameters for the PDF and the scoring rule
-        pdf_kwargs = {k: kwargs[k] for k in PDF_PARAMS[model_id] if k in kwargs}
-        q_val = kwargs.get("q_val")
-        fw_bar = kwargs.get("Fw_bar")
+        params` already contains {rho, df}   or   {theta}.
+        """
 
-        mF = pdf_func(u, **pdf_kwargs)
+        score_fn = SCORE_FUNCS[score_type]
+        pdf_raw = PDF_FUNCS[model_id]  # bare family func
+        pdf_mod = lambda v, _f=pdf_raw, _kw=params: _f(v, **_kw)
+        mF = pdf_mod(u_batch)
 
         if score_type == "LogS":
-            return float(np.sum(score_func(mF)))
-        elif score_type == "CS":
-            return float(np.sum(score_func(mF, u, q_val, fw_bar)))
-        elif score_type == "CLS":
-            return float(np.sum(score_func(mF, u, q_val, fw_bar)))
+            return float(np.sum(score_fn(mF)))  # done
+
+        # --- CS / CLS ------------------------------------------------------------------
+        df_val = params.get("df", df_global)
+
+        # reference density = law that generated u_batch
+        if model_id == "student_t":
+            pdf_ref = lambda v: student_t_copula_pdf_from_PITs(v,
+                                                               rho=0.0,
+                                                               df=df_val)
         else:
-            raise ValueError(f"Unknown score_type: {score_type}")
+            pdf_ref = lambda v: sGumbel_copula_pdf_from_PITs(v,
+                                                             theta=theta_sGumbel)
+
+        Fw_bar = outside_prob_from_sample(u_batch, pdf_mod, pdf_ref,
+                                          q_level=q_val, df=df_val)
+
+        if score_type == "CS":
+            return float(np.sum(CS(mF, u_batch, q_val, df_val, Fw_bar)))
+        else:  # "CLS"
+            return float(np.sum(CLS(mF, u_batch, q_val, df_val, Fw_bar)))
 
     # === 1. KL match sJoe copulas on a fresh sample ===
     kl_sample = sim_sGumbel_PITs(tune_size, theta_sGumbel)
@@ -161,32 +182,6 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
         next_oracle_u_sGumbel[k] = total_oracle_u_sGumbel[t]
         next_ecdf_u_sGumbel[k] = ecdf_transform(np.vstack([samples_sGumbel[t - R:t], samples_sGumbel[t]]))[-1]
 
-
-
-    MC_SIZE_FOR_FW_BAR = 10000
-    sample_f = sim_student_t_copula_PITs(MC_SIZE_FOR_FW_BAR, f_rho, df)
-    sample_g = sim_student_t_copula_PITs(MC_SIZE_FOR_FW_BAR, g_rho, df)
-    sample_p = sim_student_t_copula_PITs(MC_SIZE_FOR_FW_BAR, p_rho, df)
-    sample_sg = sim_sGumbel_PITs(MC_SIZE_FOR_FW_BAR, theta_sGumbel)
-    sample_sJoe = sim_sJoe_PITs(MC_SIZE_FOR_FW_BAR, theta_sJoe)
-    sample_sJoe_localized = sim_sJoe_PITs(MC_SIZE_FOR_FW_BAR, theta_sJoe_localized)
-    sample_sJoe_local = sim_sJoe_PITs(MC_SIZE_FOR_FW_BAR, theta_sJoe_local)
-    sample_Clayton = sim_Clayton_PITs(MC_SIZE_FOR_FW_BAR, theta_Clayton)
-
-    fw_bar_dict = {model: np.empty(P) for model in [
-        "f", "g", "p", "sJoe", "sJoe_localized", "sJoe_local", "Clayton", "sGumbel"]}
-
-    for k in range(P):
-        # Right-tail probabilities corresponding to the same thresholds used for
-        # the indicator weights above.
-        fw_bar_dict["f"][k] = outside_prob_from_sample(sample_f, q_threshold)
-        fw_bar_dict["g"][k] = outside_prob_from_sample(sample_g, q_threshold)
-        fw_bar_dict["p"][k] = outside_prob_from_sample(sample_p, q_threshold)
-        fw_bar_dict["sJoe"][k] = outside_prob_from_sample(sample_sJoe, q_threshold)
-        fw_bar_dict["sJoe_localized"][k] = outside_prob_from_sample(sample_sJoe_localized, q_threshold)
-        fw_bar_dict["sJoe_local"][k] = outside_prob_from_sample(sample_sJoe_local, q_threshold)
-        fw_bar_dict["Clayton"][k] = outside_prob_from_sample(sample_Clayton, q_threshold)
-        fw_bar_dict["sGumbel"][k] = outside_prob_from_sample(sample_sg, q_threshold)
 
     # Store rolling-window PITs and model parameters
     model_info = {
@@ -252,25 +247,13 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
             cls_v = np.empty(P)
             for k in range(P):
                 u_next = next_obs[pit][k]
-                fw_bar = fw_bar_dict[model][k]
                 q_val = q_vals[pit]
-                log_v[k] = score_vectors(u_next[np.newaxis, :], family, "LogS", **params)
-                cs_v[k] = score_vectors(
-                    u_next[np.newaxis, :],
-                    family,
-                    "CS",
-                    q_val=q_val,
-                    Fw_bar=fw_bar,
-                    **params,
-                )
-                cls_v[k] = score_vectors(
-                    u_next[np.newaxis, :],
-                    family,
-                    "CLS",
-                    q_val=q_val,
-                    Fw_bar=fw_bar,
-                    **params,
-                )
+                log_v[k] = score_vectors(u_next[np.newaxis, :], family, "LogS",
+                                         q_val=q_val, params=params, df_global=df)
+                cs_v[k] = score_vectors(u_next[np.newaxis, :], family, "CS",
+                                        q_val=q_val, params=params, df_global=df)
+                cls_v[k] = score_vectors(u_next[np.newaxis, :], family, "CLS",
+                                         q_val=q_val, params=params, df_global=df)
             for name, vec in zip(["LogS", "CS", "CLS"], [log_v, cs_v, cls_v]):
                 score_vecs[name][model][pit] = vec
                 score_sums[name][model][pit] = float(np.sum(vec))
