@@ -3,20 +3,26 @@ To do:
         Verhaal van afgelopen meeting er in verwerken
         Zodra af, de plots er in zetten
 
-    LogS van Clayton - sJoe KL tuned werkt niet
-        Same data is used for tuning & scoring --> sJoe is over-fitted
-        DM stat is soms zero variance -> zorgt dit voor verkeerde rej_freq? ; komt dit door te klein score verschil door afronden?
-        RuntimeWarning: divide by zero encountered in scalar divide (1.0 - p_R) * np.log((1.0 - p_R) / (1.0 - f_R))
+    Scoring van Clayton - sJoe KL tuned werkt niet LogS geeft dist die bell-shaped rondom 11 zit en CS & CLS bell-shape rondom 5???
+        Same data is used for tuning & scoring --> sJoe is over-fitted?
 
-        In KL test checken kwam het er op neer dat de CS en CLS niet werken
-        Lijkt er op dat misschien de local(ized) KL divergences niet correct zijn
-            check met de 2025 paper
+        DM stat is soms zero variance -> zorgt dit voor verkeerde rej_freq? ; komt dit door te klein score verschil door afronden?
+
+        RuntimeWarning: divide by zero encountered in scalar divide (1.0 - p_R) * np.log((1.0 - p_R) / (1.0 - f_R))
+            Dit gebeurt als de Fw_bar niet goed (pre)calculated is en 1 of 0 is
+
         Lijkt er op dat het misschien aan de indicator formule ligt --> X
             je kan niet als je op de marginals sum je quantile zet deze ook gebruiken voor de pits sum
             dat zou alleen zo zijn als de marginals uniform zijn en PIT transform een linear transform is
             Goede manier zou zijn:
                 generate PITs, convert naar marginals, compute sum & find q_0.05 (kan analytically)
                 kijk naar de PIT samples die voor X + Y < q_0.05 zorgen, geef deze PIT sample pairs weight 1 en anders 0
+
+        Fw_bar precomp from every model using large sample in Ramon, in mijn code Fw_bar per model ook, maar w is daarna recomputed met u_{t+1}
+            Dit geeft Fw is heel smooth, maar w is extreem noisy omdat het maar 1 punt gebruikt
+
+        Bij Ramon lijkt het of elke DM de full time-series length T is used, in mijn code DM uses P windows, but each score only using one obs u_{t+1}
+            Hier is dan ook waarschijnlijk mijn code heel noisy
 
     Bivariate bonferroni bounds?
 

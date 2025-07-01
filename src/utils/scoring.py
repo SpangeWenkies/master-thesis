@@ -12,13 +12,13 @@ from .copula_utils import (
     sample_region_mask,
 )
 
-def _fw_bar(mF: np.ndarray, w: np.ndarray) -> float:
-    """Return P(Y not in R) given densities mF and 0/1 mask w."""
-    F_total = max(np.sum(mF), 1e-100)      # ≈ ∫ f(y) dy  over sample points
-    F_outside = np.sum(mF * (1 - w))       # mass outside region
-    F_outside = max(F_outside, 1e-100)
-    F_outside = min(F_outside, F_total)    # numerical guard
-    return F_outside / F_total            # right-tail probability
+# def _fw_bar(mF: np.ndarray, w: np.ndarray) -> float:
+#     """Return P(Y not in R) given densities mF and 0/1 mask w."""
+#     F_total = max(np.sum(mF), 1e-100)      # ≈ ∫ f(y) dy  over sample points
+#     F_outside = np.sum(mF * (1 - w))       # mass outside region
+#     F_outside = max(F_outside, 1e-100)
+#     F_outside = min(F_outside, F_total)    # numerical guard
+#     return F_outside / F_total            # right-tail probability
 
 def outside_prob_from_sample(u: np.ndarray,
                              pdf_model,          # f(·; θ)
@@ -93,8 +93,8 @@ def CS(
     """
     if w is None:
         w = sample_region_mask(u, q_val, df).astype(float)
-    if Fw_bar is None:
-        Fw_bar = _fw_bar(mF, w)
+    # if Fw_bar is None:
+    #     Fw_bar = _fw_bar(mF, w)
     mF = np.asarray(mF).copy()
     mF[mF == 0] = 1e-100  # avoid numerical zeros
     return w * np.log(mF) + (1 - w) * np.log(Fw_bar)
@@ -129,8 +129,8 @@ def CLS(
     """
     if w is None:
         w = sample_region_mask(u, q_val, df).astype(float)
-    if Fw_bar is None:
-        Fw_bar = _fw_bar(mF, w)
+    # if Fw_bar is None:
+    #     Fw_bar = _fw_bar(mF, w)
     # ensure strictly positive density values to avoid log(0)
     mF = np.asarray(mF).copy()
     mF[mF == 0] = 1e-100

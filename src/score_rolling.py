@@ -211,7 +211,6 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
     fw_bar_dict["sJoe_local"] = outside_prob_from_sample(u_ref_sg, pdf_model = lambda v: sJoe_copula_pdf_from_PITs(v, theta=theta_sJoe_local),
                                                          pdf_ref = pdf_ref_sg, q_level = q_threshold, df = df)
 
-
     ecdf_u_p = np.empty((P, R, 2))
     oracle_u_p = np.empty((P, R, 2))
     ecdf_u_sGumbel = np.empty((P, R, 2))
@@ -291,6 +290,27 @@ def simulate_one_rep(n, df, f_rho, g_rho, p_rho, theta_sGumbel):
             cls_v = np.empty(P)
             for k in range(P):
                 u_next = next_obs[pit][k]
+
+                # --- diagnostic, first window only -----------------------------
+                if model == "sJoe" and pit == "oracle" and k == 0:
+                    w = fixed_mask_sg(u_next[np.newaxis, :])
+                    log_sJoe = np.log(sJoe_copula_pdf_from_PITs(u_next[np.newaxis, :],
+                                                                theta=theta_sJoe))[0]
+                    log_Clayton = np.log(Clayton_copula_pdf_from_PITs(u_next[np.newaxis, :],
+                                                                      theta=theta_Clayton))[0]
+                    dense_sJoe = sJoe_copula_pdf_from_PITs(u_next[np.newaxis, :],
+                                                           theta_sJoe)[0]
+                    dense_Clayton = Clayton_copula_pdf_from_PITs(u_next[np.newaxis, :],
+                                                                 theta_Clayton)[0]
+                    print("k=0  u_next=", u_next, dense_sJoe, dense_Clayton)
+                    print("DEBUG k=0")
+                    print("  w =", w[0])
+                    print("  log f_sJoe     =", log_sJoe)
+                    print("  log f_Clayton  =", log_Clayton)
+                    print("  Fw_bar_sJoe    =", fw_bar_dict['sJoe'])
+                    print("  Fw_bar_Clayton =", fw_bar_dict['Clayton'])
+                # ---------------------------------------------------------------
+
                 log_v[k] = compute_score(u_next[np.newaxis, :], model, pit, "LogS",
                                          params=params, df_global=df, q_val=q_threshold)
                 cs_v[k] = compute_score(u_next[np.newaxis, :], model, pit, "CS",
