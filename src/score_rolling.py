@@ -34,6 +34,9 @@ from utils.score_helpers import (
 from utils.plot_utils import (
     plot_dm_size_discrepancy,
     plot_aligned_kl_matched_scores,
+    plot_aligned_kl_matched_scores_cdf,
+    plot_score_differences,
+    plot_score_differences_cdf,
 )
 from utils.structure_defs import DiffKey
 from score_sim_config import (
@@ -53,7 +56,8 @@ from score_sim_config import (
     all_copula_models,
     copula_models_for_plots,
     score_score_keys,
-    tune_size
+    tune_size,
+    pair_to_keys_size,
 )
 
 SCORE_FUNCS = {"LogS": LogS, "CS": CS, "CLS": CLS}
@@ -510,4 +514,16 @@ if __name__ == '__main__':
     diff_keys = sorted({k for d in diffs.values() for k in d})
     score_dicts = make_score_dicts(diffs, diff_keys, score_types)
 
+    # --- Plot score differences for f - g ----------------------------------
+    plot_score_differences(score_dicts, score_types, pair_to_keys_size)
+    plot_score_differences_cdf(score_dicts, score_types, pair_to_keys_size)
+
+    fg_score_keys = [
+        (sc, "f - g", DiffKey("oracle", "f", "g"), DiffKey("ecdf", "f", "g"))
+        for sc in score_types
+    ]
+    plot_aligned_kl_matched_scores(score_dicts, fg_score_keys)
+    plot_aligned_kl_matched_scores_cdf(score_dicts, fg_score_keys)
+
+    # --- Existing KL-matched plots ---------------------------------------
     plot_aligned_kl_matched_scores(score_dicts, score_score_keys)
