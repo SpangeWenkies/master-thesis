@@ -121,15 +121,18 @@ def tune_sJoe_params(samples_list, masks_list, pdf_sg, pdf_Clayton, verbose=Fals
     # ── 3 ▸  Optimise  ───────────────────────────────────────────────
     res_full = minimize(obj_global, x0=[2.0],
                         bounds=sJoe_param_bounds,
-                        method=kl_match_optim_method)
+                        method=kl_match_optim_method,
+                        tol=1e-20)
 
     res_localised = minimize(obj_localised, x0=[2.0],
                         bounds=sJoe_param_bounds,
-                        method=kl_match_optim_method)
+                        method=kl_match_optim_method,
+                        tol=1e-20)
 
     res_local = minimize(obj_local, x0=[2.0],
-                       bounds=sJoe_param_bounds,
-                       method=kl_match_optim_method)
+                        bounds=sJoe_param_bounds,
+                        method=kl_match_optim_method,
+                        tol=1e-20)
 
 
     pdf_full = lambda u: sJoe_copula_pdf_from_PITs(u, res_full.x[0])

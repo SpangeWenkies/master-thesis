@@ -26,6 +26,7 @@ from utils.optimize_utils import tune_sJoe_params
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import t as student_t
+from scipy.stats import gaussian_kde
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from tqdm import tqdm
 import multiprocessing, os
@@ -35,8 +36,8 @@ theta_sGumbel   = 2.0
 theta_Clayton   = 3.0
 df_tail         = 5
 q_threshold     = 0.05
-sample_size     = 10_000
-n_rep           = 200
+sample_size     = 5000
+n_rep           = 1000
 n_proc          = min(32, os.cpu_count() or 1)
 
 # constant pdf/sampler for Clayton (needed in every worker)
@@ -125,16 +126,40 @@ def main() -> None:
         ):
             mean_log[i], mean_CS[i], mean_CLS[i] = fut.result()
 
-    # histograms ----------------------------------------------------
+    # KDE objects + grids --------------------------------------------------
+    kde_log = gaussian_kde(mean_log)
+    x_grid_log = np.linspace(mean_log.min(), mean_log.max(), 500)
+
+    kde_CS = gaussian_kde(mean_CS)
+    x_grid_CS = np.linspace(mean_CS.min(), mean_CS.max(), 500)
+
+    kde_CLS = gaussian_kde(mean_CLS)
+    x_grid_CLS = np.linspace(mean_CLS.min(), mean_CLS.max(), 500)
+
+    # histograms + KDE overlays -------------------------------------------
     fig, ax = plt.subplots(1, 3, figsize=(16, 4))
-    ax[0].hist(mean_log, bins=40, alpha=0.85)
+
+    # --- LogS diff --------------------------------------------------------
+    ax[0].hist(mean_log, bins=40, density=True, alpha=0.6, color="tab:blue")
+    ax[0].plot(x_grid_log, kde_log(x_grid_log), lw=2, color="crimson",
+               label="KDE")
     ax[0].set_title("Mean LogS diff (Clayton – tuned sJoe)")
-    ax[1].hist(mean_CS, bins=40, alpha=0.85, color="tab:orange")
+    ax[0].set_xlabel("difference");
+    ax[0].set_ylabel("density")
+    ax[0].legend()
+
+    # --- CSL diff ---------------------------------------------------------
+    ax[1].hist(mean_CS, bins=40, density=True, alpha=0.6, color="tab:orange")
+    ax[1].plot(x_grid_CS, kde_CS(x_grid_CS), lw=2, color="crimson")
     ax[1].set_title("Mean CSL diff (locd – Clayton)")
-    ax[2].hist(mean_CLS, bins=40, alpha=0.85, color="tab:green")
+    ax[1].set_xlabel("difference")
+
+    # --- CLS diff ---------------------------------------------------------
+    ax[2].hist(mean_CLS, bins=40, density=True, alpha=0.6, color="tab:green")
+    ax[2].plot(x_grid_CLS, kde_CLS(x_grid_CLS), lw=2, color="crimson")
     ax[2].set_title("Mean CLS diff (loc – Clayton)")
-    for a in ax: a.set_xlabel("difference")
-    ax[0].set_ylabel("frequency")
+    ax[2].set_xlabel("difference")
+
     plt.tight_layout()
     plt.show()
 
