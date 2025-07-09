@@ -165,16 +165,16 @@ def main() -> None:
             mean_LogS[i], mean_CS[i], mean_CLS[i], dm_full[i], dm_localized[i], dm_local[i] = fut.result()
 
     # KDE + histograms --------------------------------------------------
-    def show(ax, data, title, color):
+    def show_kde_hist(ax, data, title, color):
         ax.hist(data, bins=40, density=True, alpha=0.6, color=color)
         grid = np.linspace(data.min(), data.max(), 500)
         ax.plot(grid, gaussian_kde(data)(grid), lw=2, color="crimson")
         ax.set_title(title); ax.set_xlabel("difference")
 
     fig, ax = plt.subplots(1, 3, figsize=(16, 4))
-    show(ax[0], mean_LogS, "Mean LogS diff (C – sJoe KL matched)",  "tab:blue")
-    show(ax[1], mean_CS, "Mean CS diff (C - sJoe localized KL matched)",   "tab:orange")
-    show(ax[2], mean_CLS, "Mean CLS diff (C – sJoe local KL matched)",    "tab:green")
+    show_kde_hist(ax[0], mean_LogS, "Mean LogS diff (C – sJoe KL matched)",  "tab:blue")
+    show_kde_hist(ax[1], mean_CS, "Mean CS diff (C - sJoe localized KL matched)",   "tab:orange")
+    show_kde_hist(ax[2], mean_CLS, "Mean CLS diff (C – sJoe local KL matched)",    "tab:green")
     ax[0].set_ylabel("density")
     plt.tight_layout()
     plt.show()
@@ -216,6 +216,7 @@ def main() -> None:
                  linestyle="--", linewidth=1)
         ax.plot(nominal_sizes, -1.96 * np.sqrt(nominal_sizes * (1 - nominal_sizes) / len(discrepancies)), color="gray",
                  linestyle="--", linewidth=1)
+        plt.axhline(0, color="gray", linestyle="--", linewidth=1)
         ax.set_title(title)
 
     fig1, ax1 = plt.subplots(1, 3, figsize=(16, 4))
