@@ -23,7 +23,7 @@ def kl_vector(p: np.ndarray, q: np.ndarray, eps: float = EPS) -> float:
     p, q = np.asarray(p), np.asarray(q)
     p = np.clip(p, eps, None); q = np.clip(q, eps, None)
     p /= p.sum(); q /= q.sum()
-    return float(np.sum(p * np.log(p / q)))
+    return float(np.sum(p * (np.log(p) - np.log(q))))
 
 
 def full_kl(u: np.ndarray,
@@ -33,10 +33,9 @@ def full_kl(u: np.ndarray,
     Monte-Carlo KL using *given* sample u ~ P, instead of drawing inside.
     """
     p, q = pdf_p(u), pdf_q(u)
-    mask = p > 0
-    return float(np.mean(
-        np.log(p[mask] / np.clip(q[mask], EPS, None))
-    ))
+    delta = (np.log(np.clip(p, EPS, None))
+             - np.log(np.clip(q, EPS, None)))
+    return float(np.mean(delta))
 
 
 # ─────────────────── 1.  Local KL  (Def 2) ──────────────────────────────
@@ -46,6 +45,7 @@ def local_kl(u: np.ndarray,
              roi_mask: np.ndarray) -> float:
     """
     Conditional KL  D(P‖Q | ROI) estimated with samples u ~ P.
+    ROI mask must be from same u
     """
     idx = roi_mask.astype(bool)
     if idx.sum() == 0:
@@ -62,7 +62,7 @@ def localised_kl(u: np.ndarray,
                  roi_mask: np.ndarray) -> float:
     """
     KL(P_w ‖ Q_w) where  P_w  is P re-weighted by w (indicator of ROI).
-
+    ROI mask must be from same u
     Uses the identity:
         KL(P_w‖Q_w) = LocalKL + log(Z_Q / Z_P)
     """
@@ -74,7 +74,7 @@ def localised_kl(u: np.ndarray,
     Z_Q = np.mean(idx * q_vals / np.clip(p_vals, EPS, None)) # ∫ w f_Q
 
     if Z_P == 0:
-        return 0.0      # no ROI hits in sample ⇒ undefined; return 0
+        return np.nan      # no ROI hits in sample ⇒ undefined
 
     cond_kl = local_kl(u, pdf_p, pdf_q, roi_mask)
     return cond_kl + np.log(np.clip(Z_Q, EPS, None) / Z_P)

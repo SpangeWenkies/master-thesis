@@ -1,7 +1,21 @@
 To do:
-    Presentatie opbouwen vanaf het begin
-        Verhaal van afgelopen meeting er in verwerken
-        Zodra af, de plots er in zetten
+    2010/2014: out of sample forecasting, size testing only on symmetric student-t, power testing done using any
+    2011: over complete sample, but local(ized), size testing on either KL matched or student-t symmetric, power testing done using student t vs gaussian
+          check whether power and size testing localized should yield correct results by weighting ouside region,
+            as some candidates naturally have a higher mass in ROI
+
+    To-do in order:
+        0: writing deadline, so write everything on the simulation setup including theory
+        1: make the out of sample forecasting only do symmetric student-t
+            Find out and write on why the KL matching here won't work
+        2: make the complete sample working using KL and symmetric student-t
+        3: create the power testing for both settings
+        4: add comparison between actual innovations and the correctly specified ARMA-GARCH residuals
+            Check if this distinction makes size or power testing invalid
+            Cross-ref if the 4 uncertainties add up or are correlated
+        5: add transforming a boundary for indicator weighted scoring rules on marginal space to a boundary on PIT (copula) space using the ECDF, when the true CDF is unknown
+        6: add effect of misspecified marginals (e.g. using VAR(1) residuals, while VAR(3) is true)
+        7: add these to results section & finalize writing
 
     Scoring van Clayton - sJoe KL tuned werkt niet LogS geeft dist die bell-shaped rondom 11 zit en CS & CLS bell-shape rondom 5???
         Same data is used for tuning & scoring --> sJoe is over-fitted?
@@ -89,5 +103,19 @@ Notes/vragen:
         Moet ik de copula of interest fitten? of kan ik gewoon parameters zetten? fitten lijkt me handiger richting empirisch nut
 
     Moet ik uberhaupt kijken naar smoothing van ECDF door quantile regression of kernel interpolation. Of is dat alleen handig als we een percentile willen zoeken?
+
+    reference code difference to my code
+        Critical values for F and G are based on (1-alpha) and (alpha) respectively. (not both same tail or two-tailed)
+            These cv are used in the DM stat rejection i think
+        Alpha norm might be important, even for indicator weights in CS and CLS
+            AlphaNormFw has an exception for left tail indicator, why?, should this be tailored to my specific weights function
+        DistrBar returns a vector of length vR (grid size?)
+        In rej_rate() the power study difference is made (what true and what candidates to pick for the dm rej rate)
+        Seems like nowhere in the code the log score is done using a rolling window?
+            reference code doet geen out-of-sample forecast comparison. Kan waarschijnlijk dus ook niet met de KL tuned geval
+            Out-of-sample forecasting method is van 2010/2014 paper
+            Ramon code gebruikt size study van 2011 paper....
+                Gebruik symmetric & KL matching voor 2011 setup
+                Gebruik alleen symmetric case & doe power study voor 2010/2014 setup
 
 
