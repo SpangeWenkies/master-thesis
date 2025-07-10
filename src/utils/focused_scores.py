@@ -78,10 +78,11 @@ def make_region_fn(q_threshold: float, df: float | int) -> Callable[[np.ndarray]
 # 3. Monte-Carlo estimate of  F̄_w = ∫ (1 − w) f  -----------------------
 def estimate_fbar(
     pdf_f: Callable[[np.ndarray], np.ndarray],
-    weight_fn: Callable[[np.ndarray], np.ndarray],
+    weights,    # type depends on ecdf bool, if true then it is a mask, if false it is a function to create mask from u
     proposal_sampler: Callable[[int], np.ndarray],
     proposal_pdf: Callable[[np.ndarray], np.ndarray] | None = None,
     n: int = 200_000,
+    ecdf: bool = False,
 ) -> float:
     """
     Importance-sampling estimate of F̄_w.
@@ -89,17 +90,21 @@ def estimate_fbar(
     If you can sample from f directly, pass that sampler and the weights
     reduce to 1.
     """
-    u = proposal_sampler(n)                       # (n,2)
+    u = proposal_sampler(n)  # (n,2)
     f_u = pdf_f(u)
-    w_u = weight_fn(u)
 
-    if proposal_pdf is None:  # default: proposal == model  ⇒ weights = 1
-        weights = np.ones_like(f_u)
+    if ecdf:
+        w_u = weights
+    else:
+        w_u = weights(u)
+
+    if proposal_pdf is None:  # default: proposal == model  ⇒ weight = 1
+        weight = np.ones_like(f_u)
     else:  # importance weight  f / g
         g_u = proposal_pdf(u)
-        weights = f_u / np.maximum(g_u, EPS)
+        weight = f_u / np.maximum(g_u, EPS)
 
-    return float(np.sum((1. - w_u) * weights) / np.sum(weights))
+    return float(np.sum((1. - w_u) * weight) / np.sum(weight))
 # ----------------------------------------------------------------------
 # 4. Two Student-t-ROI scoring rules -----------------------------------
 def censored_log_score(
