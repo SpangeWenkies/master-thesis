@@ -78,11 +78,13 @@ def make_region_fn(q_threshold: float, df: float | int) -> Callable[[np.ndarray]
 # 3. Monte-Carlo estimate of  F̄_w = ∫ (1 − w) f  -----------------------
 def estimate_fbar(
     pdf_f: Callable[[np.ndarray], np.ndarray],
-    weights,    # type depends on ecdf bool, if true then it is a mask, if false it is a function to create mask from u
     proposal_sampler: Callable[[int], np.ndarray],
+    weights_fn: Callable[[np.ndarray], np.ndarray] | None = None,
     proposal_pdf: Callable[[np.ndarray], np.ndarray] | None = None,
     n: int = 200_000,
     ecdf: bool = False,
+    df_tail: float | int | None = None,
+    q_threshold: float | int | None = None,
 ) -> float:
     """
     Importance-sampling estimate of F̄_w.
@@ -94,9 +96,16 @@ def estimate_fbar(
     f_u = pdf_f(u)
 
     if ecdf:
-        w_u = weights
+        y = np.column_stack([
+            student_t.ppf(u[:, 0], df_tail),
+            student_t.ppf(u[:, 1], df_tail)
+        ])
+        q_star = np.quantile(y[:,0] + y[:,1], q_threshold)
+        w_u = ((y[:, 0] + y[:, 1]) <= q_star).astype(float)
     else:
-        w_u = weights(u)
+        w_u = weights_fn(u)
+
+
 
     if proposal_pdf is None:  # default: proposal == model  ⇒ weight = 1
         weight = np.ones_like(f_u)

@@ -38,7 +38,7 @@ q_threshold   = 0.05
 
 R_window      = 500        # estimation window length
 P_steps       = 100        # one-step forecasts per replication
-B_rep         = 100        # Monte-Carlo replications
+B_rep         = 32        # Monte-Carlo replications
 
 n_proc        = min(32, os.cpu_count() or 1)
 n_mc_fbar     = 40_000       # MC points for f̄_w(f) each window
@@ -155,14 +155,14 @@ def run_one_rep(rep_idx: int):
         sampler_J_local_ecdf.pdf = pdf_J_local_ecdf
 
         # ---------- fresh f̄_w(f) for the same ROI ----------------------
-        fbar_C  = estimate_fbar(pdf_clayton, w_fn, sampler_clayton, n=n_mc_fbar)
-        fbar_C_ecdf = estimate_fbar(pdf_clayton, w_fn_ecdf(Y_win), sampler_clayton, n=n_mc_fbar, ecdf=True)
+        fbar_C  = estimate_fbar(pdf_clayton, sampler_clayton, w_fn, n=n_mc_fbar)
+        fbar_C_ecdf = estimate_fbar(pdf_clayton, sampler_clayton, n=n_mc_fbar, ecdf=True, df_tail=df_tail, q_threshold=q_threshold)
 
-        fbar_J_localized = estimate_fbar(pdf_J_localized,      w_fn, sampler_J_localized,      n=n_mc_fbar)
-        fbar_J_local = estimate_fbar(pdf_J_local,      w_fn, sampler_J_local,      n=n_mc_fbar)
+        fbar_J_localized = estimate_fbar(pdf_J_localized, sampler_J_localized, w_fn, n=n_mc_fbar)
+        fbar_J_local = estimate_fbar(pdf_J_local, sampler_J_local, w_fn, n=n_mc_fbar)
 
-        fbar_J_localized_ecdf = estimate_fbar(pdf_J_localized_ecdf, w_fn_ecdf(Y_win), sampler_J_localized_ecdf, n=n_mc_fbar, ecdf=True)
-        fbar_J_local_ecdf = estimate_fbar(pdf_J_local_ecdf, w_fn_ecdf(Y_win), sampler_J_local_ecdf, n=n_mc_fbar, ecdf=True)
+        fbar_J_localized_ecdf = estimate_fbar(pdf_J_localized_ecdf, sampler_J_localized_ecdf, n=n_mc_fbar, ecdf=True, df_tail=df_tail, q_threshold=q_threshold)
+        fbar_J_local_ecdf = estimate_fbar(pdf_J_local_ecdf, sampler_J_local_ecdf, n=n_mc_fbar, ecdf=True, df_tail=df_tail, q_threshold=q_threshold)
 
         # ---------- manual scores for the one-step PIT ------------------
         w_next = w_fn(U_next)[0]                      # 0 or 1
@@ -203,13 +203,13 @@ def run_one_rep(rep_idx: int):
         sum_cls_ecdf += cls_C_ecdf - cls_J_local_ecdf
 
         # ----- score differences for this step --------------------
-        log_diffs[t] = log_C - log_J
-        cs_diffs[t] = cs_C - cs_J_localized
-        cls_diffs[t] = cls_C - cls_J_local
+        log_diffs[k] = log_C - log_J
+        cs_diffs[k] = cs_C - cs_J_localized
+        cls_diffs[k] = cls_C - cls_J_local
 
-        log_diffs_ecdf[t] = log_C_ecdf - log_J_ecdf
-        cs_diffs_ecdf[t] = cs_C_ecdf - cs_J_localized_ecdf
-        cls_diffs_ecdf[t] = cls_C_ecdf - cls_J_local_ecdf
+        log_diffs_ecdf[k] = log_C_ecdf - log_J_ecdf
+        cs_diffs_ecdf[k] = cs_C_ecdf - cs_J_localized_ecdf
+        cls_diffs_ecdf[k] = cls_C_ecdf - cls_J_local_ecdf
 
     mean_full = sum_log / P_steps
     mean_localized = sum_cs / P_steps
@@ -281,8 +281,8 @@ def main() -> None:
 
     fig, ax = plt.subplots(1, 3, figsize=(16, 4))
     show_kde_hist(ax[0], mean_LogS, mean_LogS_ecdf, "Oracle", "ECDF", "tab:blue", "navy")
-    show_kde_hist(ax[1], mean_CS, mean_CS_ecdf, "Oracle", "ECDF", "tab:orange", "darkorange")
-    show_kde_hist(ax[2], mean_CLS, mean_CLS_ecdf, "Oracle", "ECDF", "tab:green", "seagreen")
+    show_kde_hist(ax[1], mean_CS, mean_CS_ecdf, "Oracle", "ECDF", "red", "darkred")
+    show_kde_hist(ax[2], mean_CLS, mean_CLS_ecdf, "Oracle", "ECDF", "seagreen", "darkgreen")
 
     ax[0].set_title("Mean LogS diff (Clayton – sJoe KL matched)")
     ax[1].set_title("Mean CS diff (Clayton – sJoe localized KL matched)")
@@ -312,8 +312,8 @@ def main() -> None:
 
     fig, ax = plt.subplots(1, 3, figsize=(16, 4))
     show_cdf(ax[0], mean_LogS, mean_LogS_ecdf, "Oracle", "ECDF", "tab:blue", "navy")
-    show_cdf(ax[1], mean_CS, mean_CS_ecdf, "Oracle", "ECDF","tab:orange", "darkorange")
-    show_cdf(ax[2], mean_CLS, mean_CLS_ecdf, "Oracle", "ECDF","tab:green", "seagreen")
+    show_cdf(ax[1], mean_CS, mean_CS_ecdf, "Oracle", "ECDF","red", "darkred")
+    show_cdf(ax[2], mean_CLS, mean_CLS_ecdf, "Oracle", "ECDF","seagreen", "darkgreen")
 
     ax[0].set_title("Mean LogS diff (Clayton – sJoe KL matched)")
     ax[1].set_title("Mean CS diff (Clayton – sJoe localized KL matched)")
@@ -372,9 +372,9 @@ def main() -> None:
     plt.show()
 
     fig2, ax2 = plt.subplots(1, 3, figsize=(16, 4))
-    show_discrepancy(ax2[0], alpha_grid, right_CS, right_CS_ecdf, "Oracle", "ECDF", "tab:orange", "darkorange")
-    show_discrepancy(ax2[1], alpha_grid, left_CS, left_CS_ecdf,"Oracle", "ECDF", "tab:orange", "darkorange")
-    show_discrepancy(ax2[2], alpha_grid, two_sided_CS, two_sided_CS_ecdf,"Oracle", "ECDF", "tab:orange", "darkorange")
+    show_discrepancy(ax2[0], alpha_grid, right_CS, right_CS_ecdf, "Oracle", "ECDF", "red", "darkred")
+    show_discrepancy(ax2[1], alpha_grid, left_CS, left_CS_ecdf,"Oracle", "ECDF", "red", "darkred")
+    show_discrepancy(ax2[2], alpha_grid, two_sided_CS, two_sided_CS_ecdf,"Oracle", "ECDF", "red", "darkred")
     ax2[0].set_title("Size discrepancy (Clayton – sJoe localized KL matched) right-tailed")
     ax2[1].set_title("Size discrepancy (Clayton – sJoe localized KL matched) left-tailed")
     ax2[2].set_title("Size discrepancy (Clayton – sJoe localized KL matched) two-tailed")
@@ -384,9 +384,9 @@ def main() -> None:
     plt.show()
 
     fig3, ax3 = plt.subplots(1, 3, figsize=(16, 4))
-    show_discrepancy(ax3[0], alpha_grid, right_CLS, right_CLS_ecdf, "Oracle", "ECDF", "tab:green", "seagreen")
-    show_discrepancy(ax3[1], alpha_grid, left_CLS, left_CLS_ecdf,"Oracle", "ECDF", "tab:green", "seagreen")
-    show_discrepancy(ax3[2], alpha_grid, two_sided_CLS, two_sided_CLS_ecdf,"Oracle", "ECDF", "tab:green", "seagreen")
+    show_discrepancy(ax3[0], alpha_grid, right_CLS, right_CLS_ecdf, "Oracle", "ECDF", "seagreen", "darkgreen")
+    show_discrepancy(ax3[1], alpha_grid, left_CLS, left_CLS_ecdf,"Oracle", "ECDF", "seagreen", "darkgreen")
+    show_discrepancy(ax3[2], alpha_grid, two_sided_CLS, two_sided_CLS_ecdf,"Oracle", "ECDF", "seagreen", "darkgreen")
     ax3[0].set_title("Size discrepancy (Clayton – sJoe local KL matched) right-tailed")
     ax3[1].set_title("Size discrepancy (Clayton – sJoe local KL matched) left-tailed")
     ax3[2].set_title("Size discrepancy (Clayton – sJoe local KL matched) two-tailed")
