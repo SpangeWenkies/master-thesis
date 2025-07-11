@@ -33,18 +33,18 @@ import multiprocessing, os
 
 # ───────────────── 1. Configuration ───────────────────────────────────
 theta_sGumbel = 2.0
-theta_Clayton = 3.0
+theta_Clayton = 5
 df_tail       = 5
 q_threshold   = 0.05
 
-R_window      = 500        # estimation window length
+R_window      = 100        # estimation window length
 P_steps       = 100        # one-step forecasts per replication
 B_rep         = 100        # Monte-Carlo replications
 
 n_points = 5
 
 n_proc        = min(32, os.cpu_count() or 1)
-n_mc_fbar     = 40_000       # MC points for f̄_w(f) each window
+n_mc_fbar     = 500       # MC points for f̄_w(f) each window
 EPS           = 1e-12        # safe-log constant
 
 nominal_size    = 0.05
@@ -132,7 +132,7 @@ def run_one_rep(rep_idx: int):
         # ---------- calculate the target KL -----------------------------
         clayton_kl = full_kl(U_win, pdf_truth, pdf_clayton)
         clayton_kl_localized = localised_kl(U_win, pdf_truth, pdf_clayton, mask_win)
-        clayton_kl_local = localised_kl(U_win, pdf_truth, pdf_clayton, mask_win)
+        clayton_kl_local = local_kl(U_win, pdf_truth, pdf_clayton, mask_win)
 
         clayton_kl_ecdf = full_kl(U_win_ecdf, pdf_truth, pdf_clayton)
         clayton_kl_localized_ecdf = localised_kl(U_win_ecdf, pdf_truth, pdf_clayton, mask_win)
@@ -176,9 +176,6 @@ def run_one_rep(rep_idx: int):
         fbar_J_localized_ecdf = np.empty(n_points)
         fbar_J_local_ecdf = np.empty(n_points)
 
-        w_next = np.empty(n_points)
-        w_next_ecdf = np.empty(n_points)
-
         log_C = np.empty(n_points)
         log_C_ecdf = np.empty(n_points)
 
@@ -210,6 +207,13 @@ def run_one_rep(rep_idx: int):
         optim_kl_loc_ecdf = np.empty(n_points)
         optim_kl_local_ecdf = np.empty(n_points)
 
+        kl_full_acc = np.zeros(n_points)
+        kl_localized_acc = np.zeros(n_points)
+        kl_local_acc = np.zeros(n_points)
+
+        kl_full_ecdf_acc = np.zeros(n_points)
+        kl_localized_ecdf_acc = np.zeros(n_points)
+        kl_local_ecdf_acc = np.zeros(n_points)
 
         def make_sampler(theta, pdf):
             def sampler(n, theta=theta):  # capture current theta
@@ -226,6 +230,14 @@ def run_one_rep(rep_idx: int):
                 [U_win_ecdf], [mask_win], pdf_truth,
                 eval_clayton_kl_ecdf[i], eval_clayton_kl_localized_ecdf[i], eval_clayton_kl_local_ecdf[i], verbose=False
             )
+
+            kl_full_acc[i] += optim_kl[i]
+            kl_localized_acc[i] += optim_kl_loc[i]
+            kl_local_acc[i] += optim_kl_local[i]
+
+            kl_full_ecdf_acc[i] += optim_kl_ecdf[i]
+            kl_localized_ecdf_acc[i] += optim_kl_loc_ecdf[i]
+            kl_local_ecdf_acc[i] += optim_kl_local_ecdf[i]
 
             pdf_J[i]  = (lambda theta: lambda u: sJoe_copula_pdf_from_PITs(u, theta))(theta_J[i])
             pdf_J_localized[i] = (lambda theta: lambda u: sJoe_copula_pdf_from_PITs(u, theta))(theta_J_localized[i])
@@ -260,7 +272,7 @@ def run_one_rep(rep_idx: int):
             log_J_localized[i]= np.log(np.maximum(pdf_J_localized[i](U_next)[0], EPS))
             log_J_local[i]= np.log(np.maximum(pdf_J_local[i](U_next)[0], EPS))
 
-            log_C_ecdf[i] = np.log(np.maximum(pdf_clayton[i](U_next_ecdf)[0], EPS))
+            log_C_ecdf[i] = np.log(np.maximum(pdf_clayton(U_next_ecdf)[0], EPS))
             log_J_ecdf[i] = np.log(np.maximum(pdf_J_ecdf[i](U_next_ecdf)[0], EPS))
             log_J_localized_ecdf[i] = np.log(np.maximum(pdf_J_localized_ecdf[i](U_next_ecdf)[0], EPS))
             log_J_local_ecdf[i] = np.log(np.maximum(pdf_J_local_ecdf[i](U_next_ecdf)[0], EPS))
@@ -298,26 +310,48 @@ def run_one_rep(rep_idx: int):
             cs_diffs_ecdf[i][k] = cs_C_ecdf[i] - cs_J_localized_ecdf[i]
             cls_diffs_ecdf[i][k] = cls_C_ecdf[i] - cls_J_local_ecdf[i]
 
+        print(k)
+
+    mean_kl_full = np.empty(n_points)
+    mean_kl_localized = np.empty(n_points)
+    mean_kl_local = np.empty(n_points)
+    mean_kl_full_ecdf = np.empty(n_points)
+    mean_kl_localized_ecdf = np.empty(n_points)
+    mean_kl_local_ecdf = np.empty(n_points)
+
     mean_full = np.empty(n_points)
     mean_localized = np.empty(n_points)
     mean_local = np.empty(n_points)
+
     mean_full_ecdf = np.empty(n_points)
     mean_localized_ecdf = np.empty(n_points)
     mean_local_ecdf = np.empty(n_points)
+
     var_full = np.empty(n_points)
     var_locd = np.empty(n_points)
     var_local = np.empty(n_points)
+
     var_full_ecdf = np.empty(n_points)
     var_locd_ecdf = np.empty(n_points)
     var_local_ecdf = np.empty(n_points)
+
     dm_full = np.empty(n_points)
     dm_localized = np.empty(n_points)
     dm_local = np.empty(n_points)
+
     dm_full_ecdf = np.empty(n_points)
     dm_localized_ecdf = np.empty(n_points)
     dm_local_ecdf = np.empty(n_points)
 
-    for i in range(n_mc_fbar):
+    for i in range(n_points):
+        mean_kl_full[i] = kl_full_acc[i] / P_steps
+        mean_kl_localized[i] = kl_localized_acc[i] / P_steps
+        mean_kl_local[i] = kl_local_acc[i] / P_steps
+
+        mean_kl_full_ecdf[i] = kl_full_ecdf_acc[i] / P_steps
+        mean_kl_localized_ecdf[i] = kl_localized_ecdf_acc[i] / P_steps
+        mean_kl_local_ecdf[i] = kl_local_ecdf_acc[i] / P_steps
+
         mean_full[i] = sum_log[i] / P_steps
         mean_localized[i] = sum_cs[i] / P_steps
         mean_local[i] = sum_cls[i] / P_steps
@@ -345,26 +379,35 @@ def run_one_rep(rep_idx: int):
 
 
     return (mean_full, mean_localized, mean_local, dm_full, dm_localized, dm_local,
-            mean_full_ecdf, mean_localized_ecdf, mean_local_ecdf, dm_full_ecdf, dm_localized_ecdf, dm_local_ecdf)
+            mean_full_ecdf, mean_localized_ecdf, mean_local_ecdf, dm_full_ecdf, dm_localized_ecdf, dm_local_ecdf,
+            mean_kl_full, mean_kl_localized, mean_kl_local, mean_kl_full_ecdf, mean_kl_localized_ecdf, mean_kl_local_ecdf)
 
 
 # ───────────────── 4. Main driver (parallel) ──────────────────────────
 def main() -> None:
-    mean_LogS  = np.empty(B_rep)
-    mean_CS  = np.empty(B_rep)
-    mean_CLS  = np.empty(B_rep)
+    mean_LogS  = np.empty((n_points,B_rep))
+    mean_CS  = np.empty((n_points,B_rep))
+    mean_CLS  = np.empty((n_points,B_rep))
 
-    mean_LogS_ecdf = np.empty(B_rep)
-    mean_CS_ecdf = np.empty(B_rep)
-    mean_CLS_ecdf = np.empty(B_rep)
+    mean_LogS_ecdf = np.empty((n_points,B_rep))
+    mean_CS_ecdf = np.empty((n_points,B_rep))
+    mean_CLS_ecdf = np.empty((n_points,B_rep))
 
-    dm_full = np.empty(B_rep)
-    dm_localized = np.empty(B_rep)
-    dm_local = np.empty(B_rep)
+    dm_full = np.empty((n_points,B_rep))
+    dm_localized = np.empty((n_points,B_rep))
+    dm_local = np.empty((n_points,B_rep))
 
-    dm_full_ecdf = np.empty(B_rep)
-    dm_localized_ecdf = np.empty(B_rep)
-    dm_local_ecdf = np.empty(B_rep)
+    dm_full_ecdf = np.empty((n_points,B_rep))
+    dm_localized_ecdf = np.empty((n_points,B_rep))
+    dm_local_ecdf = np.empty((n_points,B_rep))
+
+    mean_kl_full = np.empty((n_points,B_rep))
+    mean_kl_localized = np.empty((n_points,B_rep))
+    mean_kl_local = np.empty((n_points,B_rep))
+
+    mean_kl_full_ecdf = np.empty((n_points,B_rep))
+    mean_kl_localized_ecdf = np.empty((n_points,B_rep))
+    mean_kl_local_ecdf = np.empty((n_points,B_rep))
 
 
     with (ProcessPoolExecutor(max_workers=n_proc) as ex):
@@ -373,132 +416,83 @@ def main() -> None:
             tqdm(as_completed(futures), total=B_rep, ncols=80,
                  desc="Rolling-window sims")
         ):
-            (mean_LogS[i], mean_CS[i], mean_CLS[i], dm_full[i], dm_localized[i], dm_local[i],
-            mean_LogS_ecdf[i], mean_CS_ecdf[i], mean_CLS_ecdf[i], dm_full_ecdf[i], dm_localized_ecdf[i], dm_local_ecdf[i]) = fut.result()
+            (mean_LogS[:,i], mean_CS[:,i], mean_CLS[:,i], dm_full[:,i], dm_localized[:,i], dm_local[:,i],
+             mean_LogS_ecdf[:,i], mean_CS_ecdf[:,i], mean_CLS_ecdf[:,i], dm_full_ecdf[:,i], dm_localized_ecdf[:,i], dm_local_ecdf[:,i],
+             mean_kl_full[:,i], mean_kl_localized[:,i], mean_kl_local[:,i],
+             mean_kl_full_ecdf[:,i], mean_kl_localized_ecdf[:,i], mean_kl_local_ecdf[:,i]) = fut.result()
 
-    # KDE + histograms --------------------------------------------------
-    def show_kde_hist(ax, data1, data2, label1, label2, color1, color2):
-        ax.hist(data1, bins=40, density=True, alpha=0.4, color=color1, label=label1)
-        ax.hist(data2, bins=40, density=True, alpha=0.4, color=color2, label=label2)
-        grid = np.linspace(min(data1.min(), data2.min()), max(data1.max(), data2.max()), 500)
-        ax.plot(grid, gaussian_kde(data1)(grid), lw=2, color=color1)
-        ax.plot(grid, gaussian_kde(data2)(grid), lw=2, color=color2)
-        ax.set_xlabel("difference")
-        ax.legend()
+    kl_full_for_plot = np.mean(mean_kl_full, axis=1)
+    kl_localized_for_plot = np.mean(mean_kl_localized, axis=1)
+    kl_local_for_plot = np.mean(mean_kl_local, axis=1)
 
-    fig, ax = plt.subplots(1, 3, figsize=(16, 4))
-    show_kde_hist(ax[0], mean_LogS, mean_LogS_ecdf, "Oracle", "ECDF", "tab:blue", "navy")
-    show_kde_hist(ax[1], mean_CS, mean_CS_ecdf, "Oracle", "ECDF", "red", "darkred")
-    show_kde_hist(ax[2], mean_CLS, mean_CLS_ecdf, "Oracle", "ECDF", "seagreen", "darkgreen")
-
-    ax[0].set_title("Mean LogS diff (Clayton – sJoe KL matched)")
-    ax[1].set_title("Mean CS diff (Clayton – sJoe localized KL matched)")
-    ax[2].set_title("Mean CLS diff (Clayton – sJoe local KL matched)")
-
-    ax[0].set_ylabel("density")
-    fig.suptitle("Oracle vs ECDF", fontsize=16)
-    plt.tight_layout()
-    plt.show()
-
-    print(f"Oracle grand mean LogS diff : {mean_LogS.mean(): .6f}")
-    print(f"Oracle grand mean CS diff : {mean_CS.mean(): .6f}")
-    print(f"Oracle grand mean CLS diff : {mean_CLS.mean(): .6f}")
-
-    print(f"ECDF grand mean LogS diff : {mean_LogS_ecdf.mean(): .6f}")
-    print(f"ECDF grand mean CS diff : {mean_CS_ecdf.mean(): .6f}")
-    print(f"ECDF grand mean CLS diff : {mean_CLS_ecdf.mean(): .6f}")
-
-    # CDF --------------------------------------------------------------
-    def show_cdf(ax, data1, data2, label1, label2, color1, color2):
-        sorted_data1 = np.sort(data1)
-        sorted_data2 = np.sort(data2)
-        cdf1 = np.arange(1, len(sorted_data1) + 1) / len(sorted_data1)
-        cdf2 = np.arange(1, len(sorted_data2) + 1) / len(sorted_data2)
-        ax.step(sorted_data1, cdf1, where="post", label=label1, color=color1)
-        ax.step(sorted_data2, cdf2, where="post", label=label2, color=color2)
-
-    fig, ax = plt.subplots(1, 3, figsize=(16, 4))
-    show_cdf(ax[0], mean_LogS, mean_LogS_ecdf, "Oracle", "ECDF", "tab:blue", "navy")
-    show_cdf(ax[1], mean_CS, mean_CS_ecdf, "Oracle", "ECDF","red", "darkred")
-    show_cdf(ax[2], mean_CLS, mean_CLS_ecdf, "Oracle", "ECDF","seagreen", "darkgreen")
-
-    ax[0].set_title("Mean LogS diff (Clayton – sJoe KL matched)")
-    ax[1].set_title("Mean CS diff (Clayton – sJoe localized KL matched)")
-    ax[2].set_title("Mean CLS diff (Clayton – sJoe local KL matched)")
-
-    ax[0].set_ylabel("CDF")
-    fig.suptitle("Oracle vs ECDF", fontsize=16)
-    plt.tight_layout()
-    plt.show()
+    kl_full_for_plot_ecdf = np.mean(mean_kl_full_ecdf, axis=1)
+    kl_localized_for_plot_ecdf = np.mean(mean_kl_localized_ecdf, axis=1)
+    kl_local_for_plot_ecdf = np.mean(mean_kl_local_ecdf, axis=1)
 
     # Rejection rate + Size discrepancy ---------------------------------------------------
-    right_LogS = np.array([(dm_full > norm.ppf(1 - a)).mean() for a in alpha_grid]) - alpha_grid
-    left_LogS = np.array([(dm_full < norm.ppf(a)).mean() for a in alpha_grid]) - alpha_grid
-    two_sided_LogS = np.array([(np.abs(dm_full) > norm.ppf(1 - a / 2)).mean() for a in alpha_grid]) - alpha_grid
+    right_LogS = np.array([(dm_full[i] > norm.ppf(1 - nominal_size)).mean() for i in range(n_points)])
+    left_LogS = np.array([(dm_full[i] < norm.ppf(nominal_size)).mean() for i in range(n_points)])
+    two_sided_LogS = np.array([(np.abs(dm_full[i]) > norm.ppf(1 - nominal_size / 2)).mean() for i in range(n_points)])
 
-    right_LogS_ecdf = np.array([(dm_full_ecdf > norm.ppf(1 - a)).mean() for a in alpha_grid]) - alpha_grid
-    left_LogS_ecdf = np.array([(dm_full_ecdf < norm.ppf(a)).mean() for a in alpha_grid]) - alpha_grid
-    two_sided_LogS_ecdf = np.array([(np.abs(dm_full_ecdf) > norm.ppf(1 - a / 2)).mean() for a in alpha_grid]) - alpha_grid
+    right_LogS_ecdf = np.array([(dm_full_ecdf[i] > norm.ppf(1 - nominal_size)).mean() for i in range(n_points)])
+    left_LogS_ecdf = np.array([(dm_full_ecdf[i] < norm.ppf(nominal_size)).mean() for i in range(n_points)])
+    two_sided_LogS_ecdf = np.array([(np.abs(dm_full_ecdf[i]) > norm.ppf(1 - nominal_size / 2)).mean() for i in range(n_points)])
 
-    right_CS = np.array([(dm_localized > norm.ppf(1 - a)).mean() for a in alpha_grid]) - alpha_grid
-    left_CS = np.array([(dm_localized < norm.ppf(a)).mean() for a in alpha_grid]) - alpha_grid
-    two_sided_CS = np.array([(np.abs(dm_localized) > norm.ppf(1 - a / 2)).mean() for a in alpha_grid]) - alpha_grid
+    right_CS = np.array([(dm_localized[i] > norm.ppf(1 - nominal_size)).mean() for i in range(n_points)])
+    left_CS = np.array([(dm_localized[i] < norm.ppf(nominal_size)).mean() for i in range(n_points)])
+    two_sided_CS = np.array([(np.abs(dm_localized[i]) > norm.ppf(1 - nominal_size / 2)).mean() for i in range(n_points)])
 
-    right_CS_ecdf = np.array([(dm_localized_ecdf > norm.ppf(1 - a)).mean() for a in alpha_grid]) - alpha_grid
-    left_CS_ecdf = np.array([(dm_localized_ecdf < norm.ppf(a)).mean() for a in alpha_grid]) - alpha_grid
-    two_sided_CS_ecdf = np.array([(np.abs(dm_localized_ecdf) > norm.ppf(1 - a / 2)).mean() for a in alpha_grid]) - alpha_grid
+    right_CS_ecdf = np.array([(dm_localized_ecdf[i] > norm.ppf(1 - nominal_size)).mean() for i in range(n_points)])
+    left_CS_ecdf = np.array([(dm_localized_ecdf[i] < norm.ppf(nominal_size)).mean() for i in range(n_points)])
+    two_sided_CS_ecdf = np.array([(np.abs(dm_localized_ecdf[i]) > norm.ppf(1 - nominal_size / 2)).mean() for i in range(n_points)])
 
-    right_CLS = np.array([(dm_local > norm.ppf(1 - a)).mean() for a in alpha_grid]) - alpha_grid
-    left_CLS = np.array([(dm_local < norm.ppf(a)).mean() for a in alpha_grid]) - alpha_grid
-    two_sided_CLS = np.array([(np.abs(dm_local) > norm.ppf(1 - a / 2)).mean() for a in alpha_grid]) - alpha_grid
+    right_CLS = np.array([(dm_local[i] > norm.ppf(1 - nominal_size)).mean() for i in range(n_points)])
+    left_CLS = np.array([(dm_local[i] < norm.ppf(nominal_size)).mean() for i in range(n_points)])
+    two_sided_CLS = np.array([(np.abs(dm_local[i]) > norm.ppf(1 - nominal_size / 2)).mean() for i in range(n_points)])
 
-    right_CLS_ecdf = np.array([(dm_local_ecdf > norm.ppf(1 - a)).mean() for a in alpha_grid]) - alpha_grid
-    left_CLS_ecdf = np.array([(dm_local_ecdf < norm.ppf(a)).mean() for a in alpha_grid]) - alpha_grid
-    two_sided_CLS_ecdf = np.array([(np.abs(dm_local_ecdf) > norm.ppf(1 - a / 2)).mean() for a in alpha_grid]) - alpha_grid
+    right_CLS_ecdf = np.array([(dm_local_ecdf[i] > norm.ppf(1 - nominal_size)).mean() for i in range(n_points)])
+    left_CLS_ecdf = np.array([(dm_local_ecdf[i] < norm.ppf(nominal_size)).mean() for i in range(n_points)])
+    two_sided_CLS_ecdf = np.array([(np.abs(dm_local_ecdf[i]) > norm.ppf(1 - nominal_size / 2)).mean() for i in range(n_points)])
 
-    def show_discrepancy(ax, nominal_sizes, discrepancies1, discrepancies2, label1, label2, color1, color2):
-        ax.plot(nominal_sizes, discrepancies1, color=color1)
-        ax.plot(nominal_sizes, discrepancies2, color=color2)
-        ax.plot(nominal_sizes, 1.96 * np.sqrt(nominal_sizes * (1 - nominal_sizes) / len(discrepancies1)), color="gray",
-                 linestyle="--", linewidth=1)
-        ax.plot(nominal_sizes, -1.96 * np.sqrt(nominal_sizes * (1 - nominal_sizes) / len(discrepancies1)), color="gray",
-                 linestyle="--", linewidth=1)
-        plt.axhline(0, color="gray", linestyle="--", linewidth=1)
-        ax.set_xlabel("Nominal size")
+    def show_discrepancy(ax, kl_axis1, kl_axis2, power1, power2, label1, label2, color1, color2):
+        ax.plot(kl_axis1, power1, color=color1)
+        ax.plot(kl_axis2, power2, color=color2)
+        plt.axhline(nominal_size, color="gray", linestyle="--", linewidth=1)
+        ax.set_xlabel("KL distance from true")
 
     fig1, ax1 = plt.subplots(1, 3, figsize=(16, 4))
-    show_discrepancy(ax1[0], alpha_grid, right_LogS, right_LogS_ecdf, "Oracle", "ECDF", "tab:blue", "navy")
-    show_discrepancy(ax1[1], alpha_grid, left_LogS, left_LogS_ecdf, "Oracle", "ECDF", "tab:blue", "navy")
-    show_discrepancy(ax1[2], alpha_grid, two_sided_LogS, two_sided_LogS_ecdf, "Oracle", "ECDF", "tab:blue", "navy")
-    ax1[0].set_title("Size discrepancy (Clayton – sJoe KL matched) right-tailed")
-    ax1[1].set_title("Size discrepancy (Clayton – sJoe KL matched) left-tailed")
-    ax1[2].set_title("Size discrepancy (Clayton – sJoe KL matched) two-tailed")
-    ax1[0].set_ylabel("Size discrepancy")
-    fig1.suptitle("Size discrepancies: Oracle vs ECDF", fontsize=16)
+    show_discrepancy(ax1[0], kl_full_for_plot, kl_full_for_plot_ecdf, right_LogS, right_LogS_ecdf, "Oracle", "ECDF", "tab:blue", "navy")
+    show_discrepancy(ax1[1], kl_full_for_plot, kl_full_for_plot_ecdf, left_LogS, left_LogS_ecdf, "Oracle", "ECDF", "tab:blue", "navy")
+    show_discrepancy(ax1[2], kl_full_for_plot, kl_full_for_plot_ecdf, two_sided_LogS, two_sided_LogS_ecdf, "Oracle", "ECDF", "tab:blue", "navy")
+    ax1[0].set_title("Power (Clayton – sJoe KL matched) right-tailed")
+    ax1[1].set_title("Power (Clayton – sJoe KL matched) left-tailed")
+    ax1[2].set_title("Power (Clayton – sJoe KL matched) two-tailed")
+    ax1[0].set_ylabel("Power (rejection rate)")
+    fig1.suptitle("Power envelope LogS: Oracle vs ECDF", fontsize=16)
     plt.tight_layout()
     plt.show()
 
     fig2, ax2 = plt.subplots(1, 3, figsize=(16, 4))
-    show_discrepancy(ax2[0], alpha_grid, right_CS, right_CS_ecdf, "Oracle", "ECDF", "red", "darkred")
-    show_discrepancy(ax2[1], alpha_grid, left_CS, left_CS_ecdf,"Oracle", "ECDF", "red", "darkred")
-    show_discrepancy(ax2[2], alpha_grid, two_sided_CS, two_sided_CS_ecdf,"Oracle", "ECDF", "red", "darkred")
-    ax2[0].set_title("Size discrepancy (Clayton – sJoe localized KL matched) right-tailed")
-    ax2[1].set_title("Size discrepancy (Clayton – sJoe localized KL matched) left-tailed")
-    ax2[2].set_title("Size discrepancy (Clayton – sJoe localized KL matched) two-tailed")
-    ax2[0].set_ylabel("Size discrepancy")
-    fig2.suptitle("Size discrepancies: Oracle vs ECDF", fontsize=16)
+    show_discrepancy(ax2[0], kl_localized_for_plot, kl_localized_for_plot_ecdf, right_CS, right_CS_ecdf, "Oracle", "ECDF", "red", "darkred")
+    show_discrepancy(ax2[1], kl_localized_for_plot, kl_localized_for_plot_ecdf, left_CS, left_CS_ecdf,"Oracle", "ECDF", "red", "darkred")
+    show_discrepancy(ax2[2], kl_localized_for_plot, kl_localized_for_plot_ecdf, two_sided_CS, two_sided_CS_ecdf,"Oracle", "ECDF", "red", "darkred")
+    ax2[0].set_title("Power (Clayton – sJoe localized KL matched) right-tailed")
+    ax2[1].set_title("Power (Clayton – sJoe localized KL matched) left-tailed")
+    ax2[2].set_title("Power (Clayton – sJoe localized KL matched) two-tailed")
+    ax2[0].set_ylabel("Power (rejection rate)")
+    fig2.suptitle("Power envelope CS: Oracle vs ECDF", fontsize=16)
     plt.tight_layout()
     plt.show()
 
     fig3, ax3 = plt.subplots(1, 3, figsize=(16, 4))
-    show_discrepancy(ax3[0], alpha_grid, right_CLS, right_CLS_ecdf, "Oracle", "ECDF", "seagreen", "darkgreen")
-    show_discrepancy(ax3[1], alpha_grid, left_CLS, left_CLS_ecdf,"Oracle", "ECDF", "seagreen", "darkgreen")
-    show_discrepancy(ax3[2], alpha_grid, two_sided_CLS, two_sided_CLS_ecdf,"Oracle", "ECDF", "seagreen", "darkgreen")
-    ax3[0].set_title("Size discrepancy (Clayton – sJoe local KL matched) right-tailed")
-    ax3[1].set_title("Size discrepancy (Clayton – sJoe local KL matched) left-tailed")
-    ax3[2].set_title("Size discrepancy (Clayton – sJoe local KL matched) two-tailed")
-    ax3[0].set_ylabel("Size discrepancy")
-    fig3.suptitle("Size discrepancies: Oracle vs ECDF", fontsize=16)
+    show_discrepancy(ax3[0], kl_local_for_plot, kl_local_for_plot_ecdf, right_CLS, right_CLS_ecdf, "Oracle", "ECDF", "seagreen", "darkgreen")
+    show_discrepancy(ax3[1], kl_local_for_plot, kl_local_for_plot_ecdf, left_CLS, left_CLS_ecdf,"Oracle", "ECDF", "seagreen", "darkgreen")
+    show_discrepancy(ax3[2], kl_local_for_plot, kl_local_for_plot_ecdf, two_sided_CLS, two_sided_CLS_ecdf,"Oracle", "ECDF", "seagreen", "darkgreen")
+    ax3[0].set_title("Power (Clayton – sJoe local KL matched) right-tailed")
+    ax3[1].set_title("Power (Clayton – sJoe local KL matched) left-tailed")
+    ax3[2].set_title("Power (Clayton – sJoe local KL matched) two-tailed")
+    ax3[0].set_ylabel("Power (rejection rate)")
+    fig3.suptitle("Power envelope CLS: Oracle vs ECDF", fontsize=16)
     plt.tight_layout()
     plt.show()
 
