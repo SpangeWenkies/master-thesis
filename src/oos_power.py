@@ -20,7 +20,8 @@ from utils.copula_utils import (
     sim_Clayton_PITs,
     sim_sJoe_PITs,
 )
-from utils.optimize_utils import tune_sJoe_params
+from utils.divergences import full_kl, localised_kl, local_kl
+from utils.optimize_utils import tune_sJoe_given_target
 from utils.focused_scores import estimate_fbar        # only for f̄_w
 
 import numpy as np
@@ -38,13 +39,15 @@ q_threshold   = 0.05
 
 R_window      = 500        # estimation window length
 P_steps       = 100        # one-step forecasts per replication
-B_rep         = 32        # Monte-Carlo replications
+B_rep         = 100        # Monte-Carlo replications
+
+n_points = 5
 
 n_proc        = min(32, os.cpu_count() or 1)
 n_mc_fbar     = 40_000       # MC points for f̄_w(f) each window
 EPS           = 1e-12        # safe-log constant
 
-alpha_grid    = np.linspace(0.01, 0.2, 20)
+nominal_size    = 0.05
 
 # ───────────────── 2. Constant model pieces ───────────────────────────
 def pdf_clayton(u):     return Clayton_copula_pdf_from_PITs(u, theta_Clayton)
@@ -59,26 +62,25 @@ def run_one_rep(rep_idx: int):
     U_all = sim_sGumbel_PITs(R_window + P_steps, theta_sGumbel)
 
     # accumulators for P differences
-    sum_log, sum_cs, sum_cls = 0.0, 0.0, 0.0
-    sum_log_ecdf, sum_cs_ecdf, sum_cls_ecdf = 0.0, 0.0, 0.0
+    sum_log, sum_cs, sum_cls = np.zeros(n_points), np.zeros(n_points), np.zeros(n_points)
+    sum_log_ecdf, sum_cs_ecdf, sum_cls_ecdf = np.zeros(n_points), np.zeros(n_points), np.zeros(n_points)
 
     MC_C = sampler_clayton(n_mc_fbar)   # reusable MC grid for f̄_clayton
 
     # 2. containers to store the *P* one-step diffs
-    log_diffs = np.empty(P_steps)
-    cs_diffs = np.empty(P_steps)
-    cls_diffs = np.empty(P_steps)
+    log_diffs = np.empty((n_points, P_steps))
+    cs_diffs = np.empty((n_points, P_steps))
+    cls_diffs = np.empty((n_points, P_steps))
 
-    log_diffs_ecdf = np.empty(P_steps)
-    cs_diffs_ecdf = np.empty(P_steps)
-    cls_diffs_ecdf = np.empty(P_steps)
+    log_diffs_ecdf = np.empty((n_points, P_steps))
+    cs_diffs_ecdf = np.empty((n_points, P_steps))
+    cls_diffs_ecdf = np.empty((n_points, P_steps))
 
     for k, t in enumerate(range(R_window, R_window+P_steps)):            # rolling windows
         U_win  = U_all[k : k+R_window]             # window (R×2)
         U_next = U_all[k+R_window : k+R_window+1]  # next PIT (1×2)
 
-
-        # ---------- ROI for this window --------------------------------
+        # ---------- ROI & observed marginals for this window --------------------------------
         y1 = student_t.ppf(U_win[:, 0], df_tail)
         y2 = student_t.ppf(U_win[:, 1], df_tail)
         q_star = np.quantile(y1 + y2, q_threshold)
@@ -127,114 +129,219 @@ def run_one_rep(rep_idx: int):
         U_next_ecdf = ecdf_next(Y_win, Y_next)
         U_win_ecdf = ecdf_window(Y_win)
 
-        # ---------- re-tune θ_sJoe* on this window ----------------------
-        theta_J, theta_J_localized, theta_J_local = tune_sJoe_params(
-            [U_win], [mask_win], pdf_truth, pdf_clayton, verbose=False
-        )
+        # ---------- calculate the target KL -----------------------------
+        clayton_kl = full_kl(U_win, pdf_truth, pdf_clayton)
+        clayton_kl_localized = localised_kl(U_win, pdf_truth, pdf_clayton, mask_win)
+        clayton_kl_local = localised_kl(U_win, pdf_truth, pdf_clayton, mask_win)
 
-        theta_J_ecdf, theta_J_localized_ecdf, theta_J_local_ecdf = tune_sJoe_params(
-            [U_win_ecdf], [mask_win], pdf_truth, pdf_clayton, verbose=False
-        )
+        clayton_kl_ecdf = full_kl(U_win_ecdf, pdf_truth, pdf_clayton)
+        clayton_kl_localized_ecdf = localised_kl(U_win_ecdf, pdf_truth, pdf_clayton, mask_win)
+        clayton_kl_local_ecdf = local_kl(U_win_ecdf, pdf_truth, pdf_clayton, mask_win)
 
-        pdf_J  = lambda u: sJoe_copula_pdf_from_PITs(u, theta_J)
-        pdf_J_localized = lambda u: sJoe_copula_pdf_from_PITs(u, theta_J_localized)
-        pdf_J_local = lambda u: sJoe_copula_pdf_from_PITs(u, theta_J_local)
+        # ---------- re-tune θ_sJoe* on this window such that it matches eval points on zero to target KL------------
+        eval_clayton_kl = [clayton_kl * (i + 1) / n_points for i in range(n_points)]
+        eval_clayton_kl_localized = [clayton_kl_localized * (i + 1) / n_points for i in range(n_points)]
+        eval_clayton_kl_local = [clayton_kl_local * (i + 1) / n_points for i in range(n_points)]
 
-        pdf_J_ecdf = lambda u: sJoe_copula_pdf_from_PITs(u, theta_J_ecdf)
-        pdf_J_localized_ecdf = lambda u: sJoe_copula_pdf_from_PITs(u, theta_J_localized_ecdf)
-        pdf_J_local_ecdf = lambda u: sJoe_copula_pdf_from_PITs(u, theta_J_local_ecdf)
+        eval_clayton_kl_ecdf = [clayton_kl_ecdf * (i + 1) / n_points for i in range(n_points)]
+        eval_clayton_kl_localized_ecdf = [clayton_kl_localized_ecdf * (i + 1) / n_points for i in range(n_points)]
+        eval_clayton_kl_local_ecdf = [clayton_kl_local_ecdf * (i + 1)/ n_points for i in range(n_points)]
 
-        def sampler_J_localized(n): return sim_sJoe_PITs(n, theta_J_localized)
-        sampler_J_localized.pdf = pdf_J_localized
-        def sampler_J_local(n): return sim_sJoe_PITs(n, theta_J_local)
-        sampler_J_local.pdf = pdf_J_local
+        theta_J = np.empty(n_points)
+        theta_J_localized = np.empty(n_points)
+        theta_J_local = np.empty(n_points)
 
-        def sampler_J_localized_ecdf(n): return sim_sJoe_PITs(n, theta_J_localized_ecdf)
-        sampler_J_localized_ecdf.pdf = pdf_J_localized_ecdf
-        def sampler_J_local_ecdf(n): return sim_sJoe_PITs(n, theta_J_local_ecdf)
-        sampler_J_local_ecdf.pdf = pdf_J_local_ecdf
+        theta_J_ecdf = np.empty(n_points)
+        theta_J_localized_ecdf = np.empty(n_points)
+        theta_J_local_ecdf = np.empty(n_points)
 
-        # ---------- fresh f̄_w(f) for the same ROI ----------------------
-        fbar_C  = estimate_fbar(pdf_clayton, sampler_clayton, w_fn, n=n_mc_fbar)
-        fbar_C_ecdf = estimate_fbar(pdf_clayton, sampler_clayton, n=n_mc_fbar, ecdf=True, df_tail=df_tail, q_threshold=q_threshold)
+        pdf_J = np.empty(n_points, dtype=object)
+        pdf_J_localized = np.empty(n_points, dtype=object)
+        pdf_J_local = np.empty(n_points, dtype=object)
 
-        fbar_J_localized = estimate_fbar(pdf_J_localized, sampler_J_localized, w_fn, n=n_mc_fbar)
-        fbar_J_local = estimate_fbar(pdf_J_local, sampler_J_local, w_fn, n=n_mc_fbar)
+        pdf_J_ecdf = np.empty(n_points, dtype=object)
+        pdf_J_localized_ecdf = np.empty(n_points, dtype=object)
+        pdf_J_local_ecdf = np.empty(n_points, dtype=object)
 
-        fbar_J_localized_ecdf = estimate_fbar(pdf_J_localized_ecdf, sampler_J_localized_ecdf, n=n_mc_fbar, ecdf=True, df_tail=df_tail, q_threshold=q_threshold)
-        fbar_J_local_ecdf = estimate_fbar(pdf_J_local_ecdf, sampler_J_local_ecdf, n=n_mc_fbar, ecdf=True, df_tail=df_tail, q_threshold=q_threshold)
+        sampler_J_localized = np.empty(n_points, dtype=object)
+        sampler_J_local = np.empty(n_points, dtype=object)
 
-        # ---------- manual scores for the one-step PIT ------------------
-        w_next = w_fn(U_next)[0]                      # 0 or 1
-        w_next_ecdf = w_fn_ecdf(Y_next)[0]
+        sampler_J_localized_ecdf = np.empty(n_points, dtype=object)
+        sampler_J_local_ecdf = np.empty(n_points, dtype=object)
 
-        log_C = np.log(np.maximum(pdf_clayton(U_next)[0], EPS))
-        log_J = np.log(np.maximum(pdf_J(U_next)[0],       EPS))
-        log_J_localized= np.log(np.maximum(pdf_J_localized(U_next)[0],      EPS))
-        log_J_local= np.log(np.maximum(pdf_J_local(U_next)[0],      EPS))
+        fbar_C = np.empty(n_points)
+        fbar_C_ecdf = np.empty(n_points)
+        fbar_J_localized = np.empty(n_points)
+        fbar_J_local = np.empty(n_points)
+        fbar_J_localized_ecdf = np.empty(n_points)
+        fbar_J_local_ecdf = np.empty(n_points)
 
-        log_C_ecdf = np.log(np.maximum(pdf_clayton(U_next_ecdf)[0], EPS))
-        log_J_ecdf = np.log(np.maximum(pdf_J_ecdf(U_next_ecdf)[0], EPS))
-        log_J_localized_ecdf = np.log(np.maximum(pdf_J_localized_ecdf(U_next_ecdf)[0], EPS))
-        log_J_local_ecdf = np.log(np.maximum(pdf_J_local_ecdf(U_next_ecdf)[0], EPS))
+        w_next = np.empty(n_points)
+        w_next_ecdf = np.empty(n_points)
 
-        # Log-score difference
-        sum_log += log_C - log_J
-        sum_log_ecdf += log_C_ecdf - log_J_ecdf
+        log_C = np.empty(n_points)
+        log_C_ecdf = np.empty(n_points)
 
-        # CS difference
-        cs_J_localized = w_next * log_J_localized + (1 - w_next) * np.log(np.maximum(fbar_J_localized, EPS))
-        cs_C  = w_next * log_C  + (1 - w_next) * np.log(np.maximum(fbar_C,  EPS))
+        log_J = np.empty(n_points)
+        log_J_localized = np.empty(n_points)
+        log_J_local = np.empty(n_points)
 
-        cs_J_localized_ecdf = w_next_ecdf * log_J_localized_ecdf + (1 - w_next_ecdf) * np.log(np.maximum(fbar_J_localized_ecdf, EPS))
-        cs_C_ecdf = w_next_ecdf * log_C_ecdf + (1 - w_next_ecdf) * np.log(np.maximum(fbar_C_ecdf, EPS))
+        log_J_ecdf = np.empty(n_points)
+        log_J_localized_ecdf = np.empty(n_points)
+        log_J_local_ecdf = np.empty(n_points)
 
-        sum_cs +=  cs_C - cs_J_localized
-        sum_cs_ecdf += cs_C_ecdf - cs_J_localized_ecdf
+        cs_C = np.empty(n_points)
+        cs_C_ecdf = np.empty(n_points)
 
-        # CLS difference
-        cls_J_local = w_next * (log_J_local - np.log(np.maximum(1 - fbar_J_local, EPS)))
-        cls_C  = w_next * (log_C  - np.log(np.maximum(1 - fbar_C,  EPS)))
+        cs_J_localized = np.empty(n_points)
+        cs_J_localized_ecdf = np.empty(n_points)
 
-        cls_J_local_ecdf = w_next_ecdf * (log_J_local_ecdf - np.log(np.maximum(1 - fbar_J_local_ecdf, EPS)))
-        cls_C_ecdf = w_next_ecdf * (log_C_ecdf - np.log(np.maximum(1 - fbar_C_ecdf, EPS)))
+        cls_C = np.empty(n_points)
+        cls_C_ecdf = np.empty(n_points)
 
-        sum_cls +=  cls_C - cls_J_local
-        sum_cls_ecdf += cls_C_ecdf - cls_J_local_ecdf
+        cls_J_local = np.empty(n_points)
+        cls_J_local_ecdf = np.empty(n_points)
 
-        # ----- score differences for this step --------------------
-        log_diffs[k] = log_C - log_J
-        cs_diffs[k] = cs_C - cs_J_localized
-        cls_diffs[k] = cls_C - cls_J_local
+        optim_kl = np.empty(n_points)
+        optim_kl_loc = np.empty(n_points)
+        optim_kl_local = np.empty(n_points)
 
-        log_diffs_ecdf[k] = log_C_ecdf - log_J_ecdf
-        cs_diffs_ecdf[k] = cs_C_ecdf - cs_J_localized_ecdf
-        cls_diffs_ecdf[k] = cls_C_ecdf - cls_J_local_ecdf
+        optim_kl_ecdf = np.empty(n_points)
+        optim_kl_loc_ecdf = np.empty(n_points)
+        optim_kl_local_ecdf = np.empty(n_points)
 
-    mean_full = sum_log / P_steps
-    mean_localized = sum_cs / P_steps
-    mean_local = sum_cls / P_steps
 
-    mean_full_ecdf = sum_log_ecdf / P_steps
-    mean_localized_ecdf = sum_cs_ecdf / P_steps
-    mean_local_ecdf = sum_cls_ecdf / P_steps
+        def make_sampler(theta, pdf):
+            def sampler(n, theta=theta):  # capture current theta
+                return sim_sJoe_PITs(n, theta)
+            sampler.pdf = pdf
+            return sampler
 
-    # DM statistic with safety
-    var_full = log_diffs.var(ddof=1)
-    var_locd = cs_diffs.var(ddof=1)
-    var_local = cls_diffs.var(ddof=1)
+        for i in range(n_points):
+            theta_J[i], theta_J_localized[i], theta_J_local[i], optim_kl[i], optim_kl_loc[i], optim_kl_local[i] = tune_sJoe_given_target(
+                [U_win], [mask_win], pdf_truth,
+                eval_clayton_kl[i], eval_clayton_kl_localized[i], eval_clayton_kl_local[i], verbose=False
+            )
+            theta_J_ecdf[i], theta_J_localized_ecdf[i], theta_J_local_ecdf[i], optim_kl_ecdf[i], optim_kl_loc_ecdf[i], optim_kl_local_ecdf[i] = tune_sJoe_given_target(
+                [U_win_ecdf], [mask_win], pdf_truth,
+                eval_clayton_kl_ecdf[i], eval_clayton_kl_localized_ecdf[i], eval_clayton_kl_local_ecdf[i], verbose=False
+            )
 
-    var_full_ecdf = log_diffs_ecdf.var(ddof=1)
-    var_locd_ecdf = cs_diffs_ecdf.var(ddof=1)
-    var_local_ecdf = cls_diffs_ecdf.var(ddof=1)
+            pdf_J[i]  = (lambda theta: lambda u: sJoe_copula_pdf_from_PITs(u, theta))(theta_J[i])
+            pdf_J_localized[i] = (lambda theta: lambda u: sJoe_copula_pdf_from_PITs(u, theta))(theta_J_localized[i])
+            pdf_J_local[i] = (lambda theta: lambda u: sJoe_copula_pdf_from_PITs(u, theta))(theta_J_local[i])
 
-    dm_full = mean_full / np.sqrt(var_full / P_steps)
-    dm_localized = (0.0 if var_locd < 1e-20 else mean_localized / np.sqrt(var_locd / P_steps))
-    dm_local = (0.0 if var_local < 1e-20 else mean_local / np.sqrt(var_local / P_steps))
+            pdf_J_ecdf[i] = (lambda theta: lambda u: sJoe_copula_pdf_from_PITs(u, theta))(theta_J_ecdf[i])
+            pdf_J_localized_ecdf[i] = (lambda theta: lambda u: sJoe_copula_pdf_from_PITs(u, theta))(theta_J_localized_ecdf[i])
+            pdf_J_local_ecdf[i] = (lambda theta: lambda u: sJoe_copula_pdf_from_PITs(u, theta))(theta_J_local_ecdf[i])
 
-    dm_full_ecdf = mean_full_ecdf / np.sqrt(var_full_ecdf / P_steps)
-    dm_localized_ecdf = (0.0 if var_locd_ecdf < 1e-20 else mean_localized_ecdf / np.sqrt(var_locd_ecdf / P_steps))
-    dm_local_ecdf = (0.0 if var_local_ecdf < 1e-20 else mean_local_ecdf / np.sqrt(var_local_ecdf / P_steps))
+            sampler_J_localized[i] = make_sampler(theta_J_localized[i], pdf_J_localized[i])
+            sampler_J_local[i] = make_sampler(theta_J_local[i], pdf_J_local[i])
+
+            sampler_J_localized_ecdf[i] = make_sampler(theta_J_localized_ecdf[i], pdf_J_localized_ecdf[i])
+            sampler_J_local_ecdf[i] = make_sampler(theta_J_local_ecdf[i], pdf_J_local_ecdf[i])
+
+            # ---------- fresh f̄_w(f) for the same ROI ----------------------
+            fbar_C[i]  = estimate_fbar(pdf_clayton, sampler_clayton, w_fn, n=n_mc_fbar)
+            fbar_C_ecdf[i] = estimate_fbar(pdf_clayton, sampler_clayton, n=n_mc_fbar, ecdf=True, df_tail=df_tail, q_threshold=q_threshold)
+
+            fbar_J_localized[i] = estimate_fbar(pdf_J_localized[i], sampler_J_localized[i], w_fn, n=n_mc_fbar)
+            fbar_J_local[i] = estimate_fbar(pdf_J_local[i], sampler_J_local[i], w_fn, n=n_mc_fbar)
+
+            fbar_J_localized_ecdf[i] = estimate_fbar(pdf_J_localized_ecdf[i], sampler_J_localized_ecdf[i], n=n_mc_fbar, ecdf=True, df_tail=df_tail, q_threshold=q_threshold)
+            fbar_J_local_ecdf[i] = estimate_fbar(pdf_J_local_ecdf[i], sampler_J_local_ecdf[i], n=n_mc_fbar, ecdf=True, df_tail=df_tail, q_threshold=q_threshold)
+
+            # ---------- manual scores for the one-step PIT ------------------
+            w_next = w_fn(U_next)[0]                      # 0 or 1
+            w_next_ecdf = w_fn_ecdf(Y_next)[0]
+
+            log_C[i] = np.log(np.maximum(pdf_clayton(U_next)[0], EPS))
+            log_J[i] = np.log(np.maximum(pdf_J[i](U_next)[0], EPS))
+            log_J_localized[i]= np.log(np.maximum(pdf_J_localized[i](U_next)[0], EPS))
+            log_J_local[i]= np.log(np.maximum(pdf_J_local[i](U_next)[0], EPS))
+
+            log_C_ecdf[i] = np.log(np.maximum(pdf_clayton[i](U_next_ecdf)[0], EPS))
+            log_J_ecdf[i] = np.log(np.maximum(pdf_J_ecdf[i](U_next_ecdf)[0], EPS))
+            log_J_localized_ecdf[i] = np.log(np.maximum(pdf_J_localized_ecdf[i](U_next_ecdf)[0], EPS))
+            log_J_local_ecdf[i] = np.log(np.maximum(pdf_J_local_ecdf[i](U_next_ecdf)[0], EPS))
+
+            # Log-score difference
+            sum_log[i] += log_C[i] - log_J[i]
+            sum_log_ecdf[i] += log_C_ecdf[i] - log_J_ecdf[i]
+
+            # CS difference
+            cs_J_localized[i] = w_next * log_J_localized[i] + (1 - w_next) * np.log(np.maximum(fbar_J_localized[i], EPS))
+            cs_C[i]  = w_next * log_C[i]  + (1 - w_next) * np.log(np.maximum(fbar_C[i],  EPS))
+
+            cs_J_localized_ecdf[i] = w_next_ecdf * log_J_localized_ecdf[i] + (1 - w_next_ecdf) * np.log(np.maximum(fbar_J_localized_ecdf[i], EPS))
+            cs_C_ecdf[i] = w_next_ecdf * log_C_ecdf[i] + (1 - w_next_ecdf) * np.log(np.maximum(fbar_C_ecdf[i], EPS))
+
+            sum_cs[i] +=  cs_C[i] - cs_J_localized[i]
+            sum_cs_ecdf[i] += cs_C_ecdf[i] - cs_J_localized_ecdf[i]
+
+            # CLS difference
+            cls_J_local[i] = w_next * (log_J_local[i] - np.log(np.maximum(1 - fbar_J_local[i], EPS)))
+            cls_C[i]  = w_next * (log_C[i]  - np.log(np.maximum(1 - fbar_C[i],  EPS)))
+
+            cls_J_local_ecdf[i] = w_next_ecdf * (log_J_local_ecdf[i] - np.log(np.maximum(1 - fbar_J_local_ecdf[i], EPS)))
+            cls_C_ecdf[i] = w_next_ecdf * (log_C_ecdf[i] - np.log(np.maximum(1 - fbar_C_ecdf[i], EPS)))
+
+            sum_cls[i] +=  cls_C[i] - cls_J_local[i]
+            sum_cls_ecdf[i] += cls_C_ecdf[i] - cls_J_local_ecdf[i]
+
+            # ----- score differences for this step --------------------
+            log_diffs[i][k] = log_C[i] - log_J[i]
+            cs_diffs[i][k] = cs_C[i] - cs_J_localized[i]
+            cls_diffs[i][k] = cls_C[i] - cls_J_local[i]
+
+            log_diffs_ecdf[i][k] = log_C_ecdf[i] - log_J_ecdf[i]
+            cs_diffs_ecdf[i][k] = cs_C_ecdf[i] - cs_J_localized_ecdf[i]
+            cls_diffs_ecdf[i][k] = cls_C_ecdf[i] - cls_J_local_ecdf[i]
+
+    mean_full = np.empty(n_points)
+    mean_localized = np.empty(n_points)
+    mean_local = np.empty(n_points)
+    mean_full_ecdf = np.empty(n_points)
+    mean_localized_ecdf = np.empty(n_points)
+    mean_local_ecdf = np.empty(n_points)
+    var_full = np.empty(n_points)
+    var_locd = np.empty(n_points)
+    var_local = np.empty(n_points)
+    var_full_ecdf = np.empty(n_points)
+    var_locd_ecdf = np.empty(n_points)
+    var_local_ecdf = np.empty(n_points)
+    dm_full = np.empty(n_points)
+    dm_localized = np.empty(n_points)
+    dm_local = np.empty(n_points)
+    dm_full_ecdf = np.empty(n_points)
+    dm_localized_ecdf = np.empty(n_points)
+    dm_local_ecdf = np.empty(n_points)
+
+    for i in range(n_mc_fbar):
+        mean_full[i] = sum_log[i] / P_steps
+        mean_localized[i] = sum_cs[i] / P_steps
+        mean_local[i] = sum_cls[i] / P_steps
+
+        mean_full_ecdf[i] = sum_log_ecdf[i] / P_steps
+        mean_localized_ecdf[i] = sum_cs_ecdf[i] / P_steps
+        mean_local_ecdf[i] = sum_cls_ecdf[i] / P_steps
+
+        # DM statistic with safety
+        var_full[i] = log_diffs[i].var(ddof=1)
+        var_locd[i] = cs_diffs[i].var(ddof=1)
+        var_local[i] = cls_diffs[i].var(ddof=1)
+
+        var_full_ecdf[i] = log_diffs_ecdf[i].var(ddof=1)
+        var_locd_ecdf[i] = cs_diffs_ecdf[i].var(ddof=1)
+        var_local_ecdf[i] = cls_diffs_ecdf[i].var(ddof=1)
+
+        dm_full[i] = mean_full[i] / np.sqrt(var_full[i] / P_steps)
+        dm_localized[i] = (0.0 if var_locd[i] < 1e-20 else mean_localized[i] / np.sqrt(var_locd[i] / P_steps))
+        dm_local[i] = (0.0 if var_local[i] < 1e-20 else mean_local[i] / np.sqrt(var_local[i] / P_steps))
+
+        dm_full_ecdf[i] = mean_full_ecdf[i] / np.sqrt(var_full_ecdf[i] / P_steps)
+        dm_localized_ecdf[i] = (0.0 if var_locd_ecdf[i] < 1e-20 else mean_localized_ecdf[i] / np.sqrt(var_locd_ecdf[i] / P_steps))
+        dm_local_ecdf[i] = (0.0 if var_local_ecdf[i] < 1e-20 else mean_local_ecdf[i] / np.sqrt(var_local_ecdf[i] / P_steps))
 
 
     return (mean_full, mean_localized, mean_local, dm_full, dm_localized, dm_local,

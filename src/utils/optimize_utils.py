@@ -156,3 +156,75 @@ def tune_sJoe_params(samples_list, masks_list, pdf_sg, pdf_Clayton, verbose=Fals
         logger.info(f"Optimized local KL(sGumbel||sJoe): {optim_kl_local:.6f}")
 
     return res_full.x, res_localised.x, res_local.x
+
+def tune_sJoe_given_target(samples_list, masks_list, pdf_sg, target_full, target_locd, target_loc, verbose=False):
+    """KL-match sJoe parameters to the targets given through sJoe distance to the sGumbel."""
+
+    logger = logging.getLogger(__name__)
+    logging.basicConfig(level=logging.INFO)
+    logging.getLogger("rpy2").setLevel(logging.WARNING)
+
+    # ── 2 ▸  Objectives  sGumbel ‖ sJoe(θ)  ──────────────────────────
+    def make_pdf(theta):  # helper
+        return lambda u: sJoe_copula_pdf_from_PITs(u, theta)
+
+    def obj_global(theta):
+        if theta < 1:
+            return np.inf
+        pdf = lambda u: sJoe_copula_pdf_from_PITs(u, theta)
+        val = np.mean([
+            full_kl(u, pdf_sg, pdf)  # reuse same PIT batches
+            for u in samples_list
+        ])
+        return (val - target_full) ** 2
+
+    def obj_localised(theta):
+        if theta < 1: return np.inf
+        val = np.mean([localised_kl(u, pdf_sg, make_pdf(theta), m)
+                       for u, m in zip(samples_list, masks_list)])
+        return (val - target_locd) ** 2
+
+    def obj_local(theta):
+        if theta < 1: return np.inf
+        val = np.mean([local_kl(u, pdf_sg, make_pdf(theta), m)
+                       for u, m in zip(samples_list, masks_list)])
+        return (val - target_loc) ** 2
+
+    # ── 3 ▸  Optimise  ───────────────────────────────────────────────
+    res_full = minimize(obj_global, x0=[2.0],
+                        bounds=sJoe_param_bounds,
+                        method=kl_match_optim_method,
+                        tol=1e-20)
+
+    res_localised = minimize(obj_localised, x0=[2.0],
+                        bounds=sJoe_param_bounds,
+                        method=kl_match_optim_method,
+                        tol=1e-20)
+
+    res_local = minimize(obj_local, x0=[2.0],
+                        bounds=sJoe_param_bounds,
+                        method=kl_match_optim_method,
+                        tol=1e-20)
+
+
+    pdf_full = lambda u: sJoe_copula_pdf_from_PITs(u, res_full.x[0])
+    pdf_localised = lambda u: sJoe_copula_pdf_from_PITs(u, res_localised.x[0])
+    pdf_local = lambda u: sJoe_copula_pdf_from_PITs(u, res_local.x[0])
+
+    optim_kl = np.mean([full_kl(u, pdf_sg, pdf_full) for u in samples_list])
+    optim_kl_loc = np.mean([localised_kl(u, pdf_sg, pdf_localised, m) for u, m in zip(samples_list, masks_list)])
+    optim_kl_local = np.mean([local_kl(u, pdf_sg, pdf_local, m) for u, m in zip(samples_list, masks_list)])
+
+
+    if verbose:
+        logger.info(f"Tuned sJoe (full): theta = {res_full.x[0]:.4f}")
+        logger.info(f"Target KL(sGumbel||Clayton) full: {target_full:.6f}")
+        logger.info(f"Optimized full KL(sGumbel||sJoe): {optim_kl:.6f}")
+        logger.info(f"Tuned sJoe (localized): theta = {res_localised.x[0]:.4f}")
+        logger.info(f"Target KL(sGumbel||Clayton) localized: {target_locd:.6f}")
+        logger.info(f"Optimized localized KL(sGumbel||sJoe): {optim_kl_loc:.6f}")
+        logger.info(f"Tuned sJoe (local): theta = {res_local.x[0]:.4f}")
+        logger.info(f"Target KL(sGumbel||Clayton) local: {target_loc:.6f}")
+        logger.info(f"Optimized local KL(sGumbel||sJoe): {optim_kl_local:.6f}")
+
+    return res_full.x, res_localised.x, res_local.x, optim_kl, optim_kl_loc, optim_kl_local
