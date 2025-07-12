@@ -191,18 +191,18 @@ def tune_sJoe_given_target(samples_list, masks_list, pdf_sg, target_full, target
         return (val - target_loc) ** 2
 
     # ── 3 ▸  Optimise  ───────────────────────────────────────────────
-    res_full = minimize(obj_global, x0=[2.0],
-                        bounds=sJoe_param_bounds,
+    res_full = minimize(obj_global, x0=[3.0],
+                        bounds=[(1.5, 20)],
                         method=kl_match_optim_method,
                         tol=1e-20)
 
-    res_localised = minimize(obj_localised, x0=[2.0],
-                        bounds=sJoe_param_bounds,
+    res_localised = minimize(obj_localised, x0=[3.0],
+                        bounds=[(1.5, 20)],
                         method=kl_match_optim_method,
                         tol=1e-20)
 
-    res_local = minimize(obj_local, x0=[2.0],
-                        bounds=sJoe_param_bounds,
+    res_local = minimize(obj_local, x0=[3.0],
+                        bounds=[(1.5, 20)],
                         method=kl_match_optim_method,
                         tol=1e-20)
 

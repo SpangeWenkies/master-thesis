@@ -32,14 +32,14 @@ from tqdm import tqdm
 import multiprocessing, os
 
 # ───────────────── 1. Configuration ───────────────────────────────────
-theta_sGumbel = 2.0
-theta_Clayton = 5
+theta_sGumbel = 1.5
+theta_Clayton = 8
 df_tail       = 5
 q_threshold   = 0.05
 
 R_window      = 100        # estimation window length
-P_steps       = 100        # one-step forecasts per replication
-B_rep         = 100        # Monte-Carlo replications
+P_steps       = 50        # one-step forecasts per replication
+B_rep         = 20        # Monte-Carlo replications
 
 n_points = 5
 
@@ -224,7 +224,7 @@ def run_one_rep(rep_idx: int):
         for i in range(n_points):
             theta_J[i], theta_J_localized[i], theta_J_local[i], optim_kl[i], optim_kl_loc[i], optim_kl_local[i] = tune_sJoe_given_target(
                 [U_win], [mask_win], pdf_truth,
-                eval_clayton_kl[i], eval_clayton_kl_localized[i], eval_clayton_kl_local[i], verbose=False
+                eval_clayton_kl[i], eval_clayton_kl_localized[i], eval_clayton_kl_local[i], verbose=True
             )
             theta_J_ecdf[i], theta_J_localized_ecdf[i], theta_J_local_ecdf[i], optim_kl_ecdf[i], optim_kl_loc_ecdf[i], optim_kl_local_ecdf[i] = tune_sJoe_given_target(
                 [U_win_ecdf], [mask_win], pdf_truth,
@@ -421,6 +421,24 @@ def main() -> None:
              mean_kl_full[:,i], mean_kl_localized[:,i], mean_kl_local[:,i],
              mean_kl_full_ecdf[:,i], mean_kl_localized_ecdf[:,i], mean_kl_local_ecdf[:,i]) = fut.result()
 
+    plt.plot(mean_kl_full[0])
+    plt.show()
+
+    plt.plot(mean_kl_full[1])
+    plt.show()
+
+    plt.plot(mean_kl_full[3])
+    plt.show()
+
+    plt.plot(mean_kl_localized[2])
+    plt.show()
+
+    plt.plot(range(n_points), np.mean(mean_kl_full, axis=1), label="Oracle")
+    plt.plot(range(n_points), np.mean(mean_kl_full_ecdf, axis=1), label="ECDF")
+    plt.title("Average KL per eval point")
+    plt.legend()
+    plt.show()
+
     kl_full_for_plot = np.mean(mean_kl_full, axis=1)
     kl_localized_for_plot = np.mean(mean_kl_localized, axis=1)
     kl_local_for_plot = np.mean(mean_kl_local, axis=1)
@@ -430,68 +448,41 @@ def main() -> None:
     kl_local_for_plot_ecdf = np.mean(mean_kl_local_ecdf, axis=1)
 
     # Rejection rate + Size discrepancy ---------------------------------------------------
-    right_LogS = np.array([(dm_full[i] > norm.ppf(1 - nominal_size)).mean() for i in range(n_points)])
     left_LogS = np.array([(dm_full[i] < norm.ppf(nominal_size)).mean() for i in range(n_points)])
-    two_sided_LogS = np.array([(np.abs(dm_full[i]) > norm.ppf(1 - nominal_size / 2)).mean() for i in range(n_points)])
-
-    right_LogS_ecdf = np.array([(dm_full_ecdf[i] > norm.ppf(1 - nominal_size)).mean() for i in range(n_points)])
     left_LogS_ecdf = np.array([(dm_full_ecdf[i] < norm.ppf(nominal_size)).mean() for i in range(n_points)])
-    two_sided_LogS_ecdf = np.array([(np.abs(dm_full_ecdf[i]) > norm.ppf(1 - nominal_size / 2)).mean() for i in range(n_points)])
 
-    right_CS = np.array([(dm_localized[i] > norm.ppf(1 - nominal_size)).mean() for i in range(n_points)])
     left_CS = np.array([(dm_localized[i] < norm.ppf(nominal_size)).mean() for i in range(n_points)])
-    two_sided_CS = np.array([(np.abs(dm_localized[i]) > norm.ppf(1 - nominal_size / 2)).mean() for i in range(n_points)])
-
-    right_CS_ecdf = np.array([(dm_localized_ecdf[i] > norm.ppf(1 - nominal_size)).mean() for i in range(n_points)])
     left_CS_ecdf = np.array([(dm_localized_ecdf[i] < norm.ppf(nominal_size)).mean() for i in range(n_points)])
-    two_sided_CS_ecdf = np.array([(np.abs(dm_localized_ecdf[i]) > norm.ppf(1 - nominal_size / 2)).mean() for i in range(n_points)])
 
-    right_CLS = np.array([(dm_local[i] > norm.ppf(1 - nominal_size)).mean() for i in range(n_points)])
     left_CLS = np.array([(dm_local[i] < norm.ppf(nominal_size)).mean() for i in range(n_points)])
-    two_sided_CLS = np.array([(np.abs(dm_local[i]) > norm.ppf(1 - nominal_size / 2)).mean() for i in range(n_points)])
-
-    right_CLS_ecdf = np.array([(dm_local_ecdf[i] > norm.ppf(1 - nominal_size)).mean() for i in range(n_points)])
     left_CLS_ecdf = np.array([(dm_local_ecdf[i] < norm.ppf(nominal_size)).mean() for i in range(n_points)])
-    two_sided_CLS_ecdf = np.array([(np.abs(dm_local_ecdf[i]) > norm.ppf(1 - nominal_size / 2)).mean() for i in range(n_points)])
 
-    def show_discrepancy(ax, kl_axis1, kl_axis2, power1, power2, label1, label2, color1, color2):
+    def show_power(ax, kl_axis1, kl_axis2, power1, power2, label1, label2, color1, color2):
         ax.plot(kl_axis1, power1, color=color1)
         ax.plot(kl_axis2, power2, color=color2)
         plt.axhline(nominal_size, color="gray", linestyle="--", linewidth=1)
         ax.set_xlabel("KL distance from true")
 
-    fig1, ax1 = plt.subplots(1, 3, figsize=(16, 4))
-    show_discrepancy(ax1[0], kl_full_for_plot, kl_full_for_plot_ecdf, right_LogS, right_LogS_ecdf, "Oracle", "ECDF", "tab:blue", "navy")
-    show_discrepancy(ax1[1], kl_full_for_plot, kl_full_for_plot_ecdf, left_LogS, left_LogS_ecdf, "Oracle", "ECDF", "tab:blue", "navy")
-    show_discrepancy(ax1[2], kl_full_for_plot, kl_full_for_plot_ecdf, two_sided_LogS, two_sided_LogS_ecdf, "Oracle", "ECDF", "tab:blue", "navy")
-    ax1[0].set_title("Power (Clayton – sJoe KL matched) right-tailed")
-    ax1[1].set_title("Power (Clayton – sJoe KL matched) left-tailed")
-    ax1[2].set_title("Power (Clayton – sJoe KL matched) two-tailed")
-    ax1[0].set_ylabel("Power (rejection rate)")
+    fig1, ax1 = plt.subplots(1, 1, figsize=(6, 4))
+    show_power(ax1, kl_full_for_plot, kl_full_for_plot_ecdf, left_LogS, left_LogS_ecdf, "Oracle", "ECDF", "tab:blue", "navy")
+    ax1.set_title("Power (Clayton – sJoe KL matched) left-tailed")
+    ax1.set_ylabel("Power (rejection rate)")
     fig1.suptitle("Power envelope LogS: Oracle vs ECDF", fontsize=16)
     plt.tight_layout()
     plt.show()
 
-    fig2, ax2 = plt.subplots(1, 3, figsize=(16, 4))
-    show_discrepancy(ax2[0], kl_localized_for_plot, kl_localized_for_plot_ecdf, right_CS, right_CS_ecdf, "Oracle", "ECDF", "red", "darkred")
-    show_discrepancy(ax2[1], kl_localized_for_plot, kl_localized_for_plot_ecdf, left_CS, left_CS_ecdf,"Oracle", "ECDF", "red", "darkred")
-    show_discrepancy(ax2[2], kl_localized_for_plot, kl_localized_for_plot_ecdf, two_sided_CS, two_sided_CS_ecdf,"Oracle", "ECDF", "red", "darkred")
-    ax2[0].set_title("Power (Clayton – sJoe localized KL matched) right-tailed")
-    ax2[1].set_title("Power (Clayton – sJoe localized KL matched) left-tailed")
-    ax2[2].set_title("Power (Clayton – sJoe localized KL matched) two-tailed")
-    ax2[0].set_ylabel("Power (rejection rate)")
+    fig2, ax2 = plt.subplots(1, 1, figsize=(6, 4))
+    show_power(ax2, kl_localized_for_plot, kl_localized_for_plot_ecdf, left_CS, left_CS_ecdf,"Oracle", "ECDF", "red", "darkred")
+    ax2.set_title("Power (Clayton – sJoe localized KL matched) left-tailed")
+    ax2.set_ylabel("Power (rejection rate)")
     fig2.suptitle("Power envelope CS: Oracle vs ECDF", fontsize=16)
     plt.tight_layout()
     plt.show()
 
-    fig3, ax3 = plt.subplots(1, 3, figsize=(16, 4))
-    show_discrepancy(ax3[0], kl_local_for_plot, kl_local_for_plot_ecdf, right_CLS, right_CLS_ecdf, "Oracle", "ECDF", "seagreen", "darkgreen")
-    show_discrepancy(ax3[1], kl_local_for_plot, kl_local_for_plot_ecdf, left_CLS, left_CLS_ecdf,"Oracle", "ECDF", "seagreen", "darkgreen")
-    show_discrepancy(ax3[2], kl_local_for_plot, kl_local_for_plot_ecdf, two_sided_CLS, two_sided_CLS_ecdf,"Oracle", "ECDF", "seagreen", "darkgreen")
-    ax3[0].set_title("Power (Clayton – sJoe local KL matched) right-tailed")
-    ax3[1].set_title("Power (Clayton – sJoe local KL matched) left-tailed")
-    ax3[2].set_title("Power (Clayton – sJoe local KL matched) two-tailed")
-    ax3[0].set_ylabel("Power (rejection rate)")
+    fig3, ax3 = plt.subplots(1, 1, figsize=(6, 4))
+    show_power(ax3, kl_local_for_plot, kl_local_for_plot_ecdf, left_CLS, left_CLS_ecdf,"Oracle", "ECDF", "seagreen", "darkgreen")
+    ax3.set_title("Power (Clayton – sJoe local KL matched) left-tailed")
+    ax3.set_ylabel("Power (rejection rate)")
     fig3.suptitle("Power envelope CLS: Oracle vs ECDF", fontsize=16)
     plt.tight_layout()
     plt.show()
