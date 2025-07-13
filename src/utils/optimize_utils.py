@@ -134,17 +134,13 @@ def tune_sJoe_params(samples_list, masks_list, pdf_sg, pdf_Clayton, verbose=Fals
                         method=kl_match_optim_method,
                         tol=1e-20)
 
-
-    pdf_full = lambda u: sJoe_copula_pdf_from_PITs(u, res_full.x[0])
-    pdf_localised = lambda u: sJoe_copula_pdf_from_PITs(u, res_localised.x[0])
-    pdf_local = lambda u: sJoe_copula_pdf_from_PITs(u, res_local.x[0])
-
-    optim_kl = np.mean([full_kl(u, pdf_sg, pdf_full) for u in samples_list])
-    optim_kl_loc = np.mean([localised_kl(u, pdf_sg, pdf_localised, m) for u, m in zip(samples_list, masks_list)])
-    optim_kl_local = np.mean([local_kl(u, pdf_sg, pdf_local, m) for u, m in zip(samples_list, masks_list)])
-
-
     if verbose:
+        pdf_full = lambda u: sJoe_copula_pdf_from_PITs(u, res_full.x[0])
+        pdf_localised = lambda u: sJoe_copula_pdf_from_PITs(u, res_localised.x[0])
+        pdf_local = lambda u: sJoe_copula_pdf_from_PITs(u, res_local.x[0])
+        optim_kl = np.mean([full_kl(u, pdf_sg, pdf_full) for u in samples_list])
+        optim_kl_loc = np.mean([localised_kl(u, pdf_sg, pdf_localised, m) for u, m in zip(samples_list, masks_list)])
+        optim_kl_local = np.mean([local_kl(u, pdf_sg, pdf_local, m) for u, m in zip(samples_list, masks_list)])
         logger.info(f"Tuned sJoe (full): theta = {res_full.x[0]:.4f}")
         logger.info(f"Target KL(sGumbel||Clayton) full: {target_full:.6f}")
         logger.info(f"Optimized full KL(sGumbel||sJoe): {optim_kl:.6f}")
@@ -207,16 +203,13 @@ def tune_sJoe_given_target(samples_list, masks_list, pdf_sg, target_full, target
                         tol=1e-20)
 
 
-    pdf_full = lambda u: sJoe_copula_pdf_from_PITs(u, res_full.x[0])
-    pdf_localised = lambda u: sJoe_copula_pdf_from_PITs(u, res_localised.x[0])
-    pdf_local = lambda u: sJoe_copula_pdf_from_PITs(u, res_local.x[0])
-
-    optim_kl = np.mean([full_kl(u, pdf_sg, pdf_full) for u in samples_list])
-    optim_kl_loc = np.mean([localised_kl(u, pdf_sg, pdf_localised, m) for u, m in zip(samples_list, masks_list)])
-    optim_kl_local = np.mean([local_kl(u, pdf_sg, pdf_local, m) for u, m in zip(samples_list, masks_list)])
-
-
     if verbose:
+        pdf_full = lambda u: sJoe_copula_pdf_from_PITs(u, res_full.x[0])
+        pdf_localised = lambda u: sJoe_copula_pdf_from_PITs(u, res_localised.x[0])
+        pdf_local = lambda u: sJoe_copula_pdf_from_PITs(u, res_local.x[0])
+        optim_kl = np.mean([full_kl(u, pdf_sg, pdf_full) for u in samples_list])
+        optim_kl_loc = np.mean([localised_kl(u, pdf_sg, pdf_localised, m) for u, m in zip(samples_list, masks_list)])
+        optim_kl_local = np.mean([local_kl(u, pdf_sg, pdf_local, m) for u, m in zip(samples_list, masks_list)])
         logger.info(f"Tuned sJoe (full): theta = {res_full.x[0]:.4f}")
         logger.info(f"Target KL(sGumbel||Clayton) full: {target_full:.6f}")
         logger.info(f"Optimized full KL(sGumbel||sJoe): {optim_kl:.6f}")
@@ -227,4 +220,4 @@ def tune_sJoe_given_target(samples_list, masks_list, pdf_sg, target_full, target
         logger.info(f"Target KL(sGumbel||Clayton) local: {target_loc:.6f}")
         logger.info(f"Optimized local KL(sGumbel||sJoe): {optim_kl_local:.6f}")
 
-    return res_full.x, res_localised.x, res_local.x, optim_kl, optim_kl_loc, optim_kl_local
+    return res_full.x, res_localised.x, res_local.x

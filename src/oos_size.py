@@ -36,12 +36,12 @@ theta_Clayton = 3.0
 df_tail       = 5
 q_threshold   = 0.05
 
-R_window      = 500        # estimation window length
+R_window      = 255        # estimation window length
 P_steps       = 100        # one-step forecasts per replication
 B_rep         = 500        # Monte-Carlo replications
 
 n_proc        = min(32, os.cpu_count() or 1)
-n_mc_fbar     = 40_000       # MC points for f̄_w(f) each window
+n_mc_fbar     = 2000       # MC points for f̄_w(f) each window
 EPS           = 1e-12        # safe-log constant
 
 alpha_grid    = np.linspace(0.01, 0.2, 20)

@@ -33,18 +33,18 @@ import multiprocessing, os
 
 # ───────────────── 1. Configuration ───────────────────────────────────
 theta_sGumbel = 1.5
-theta_Clayton = 8
+theta_Clayton = 2.5
 df_tail       = 5
 q_threshold   = 0.05
 
-R_window      = 100        # estimation window length
-P_steps       = 50        # one-step forecasts per replication
-B_rep         = 20        # Monte-Carlo replications
+R_window      = 255        # estimation window length
+P_steps       = 500        # one-step forecasts per replication
+B_rep         = 48        # Monte-Carlo replications
 
-n_points = 5
+n_points = 12
 
 n_proc        = min(32, os.cpu_count() or 1)
-n_mc_fbar     = 500       # MC points for f̄_w(f) each window
+n_mc_fbar     = 250       # MC points for f̄_w(f) each window
 EPS           = 1e-12        # safe-log constant
 
 nominal_size    = 0.05
@@ -65,8 +65,6 @@ def run_one_rep(rep_idx: int):
     sum_log, sum_cs, sum_cls = np.zeros(n_points), np.zeros(n_points), np.zeros(n_points)
     sum_log_ecdf, sum_cs_ecdf, sum_cls_ecdf = np.zeros(n_points), np.zeros(n_points), np.zeros(n_points)
 
-    MC_C = sampler_clayton(n_mc_fbar)   # reusable MC grid for f̄_clayton
-
     # 2. containers to store the *P* one-step diffs
     log_diffs = np.empty((n_points, P_steps))
     cs_diffs = np.empty((n_points, P_steps))
@@ -76,7 +74,11 @@ def run_one_rep(rep_idx: int):
     cs_diffs_ecdf = np.empty((n_points, P_steps))
     cls_diffs_ecdf = np.empty((n_points, P_steps))
 
-    for k, t in enumerate(range(R_window, R_window+P_steps)):            # rolling windows
+    for k, t in enumerate(range(R_window, R_window+P_steps)):
+
+        print(k)
+
+        # rolling windows
         U_win  = U_all[k : k+R_window]             # window (R×2)
         U_next = U_all[k+R_window : k+R_window+1]  # next PIT (1×2)
 
@@ -199,22 +201,6 @@ def run_one_rep(rep_idx: int):
         cls_J_local = np.empty(n_points)
         cls_J_local_ecdf = np.empty(n_points)
 
-        optim_kl = np.empty(n_points)
-        optim_kl_loc = np.empty(n_points)
-        optim_kl_local = np.empty(n_points)
-
-        optim_kl_ecdf = np.empty(n_points)
-        optim_kl_loc_ecdf = np.empty(n_points)
-        optim_kl_local_ecdf = np.empty(n_points)
-
-        kl_full_acc = np.zeros(n_points)
-        kl_localized_acc = np.zeros(n_points)
-        kl_local_acc = np.zeros(n_points)
-
-        kl_full_ecdf_acc = np.zeros(n_points)
-        kl_localized_ecdf_acc = np.zeros(n_points)
-        kl_local_ecdf_acc = np.zeros(n_points)
-
         def make_sampler(theta, pdf):
             def sampler(n, theta=theta):  # capture current theta
                 return sim_sJoe_PITs(n, theta)
@@ -222,22 +208,14 @@ def run_one_rep(rep_idx: int):
             return sampler
 
         for i in range(n_points):
-            theta_J[i], theta_J_localized[i], theta_J_local[i], optim_kl[i], optim_kl_loc[i], optim_kl_local[i] = tune_sJoe_given_target(
+            theta_J[i], theta_J_localized[i], theta_J_local[i] = tune_sJoe_given_target(
                 [U_win], [mask_win], pdf_truth,
-                eval_clayton_kl[i], eval_clayton_kl_localized[i], eval_clayton_kl_local[i], verbose=True
+                eval_clayton_kl[i], eval_clayton_kl_localized[i], eval_clayton_kl_local[i], verbose=False
             )
-            theta_J_ecdf[i], theta_J_localized_ecdf[i], theta_J_local_ecdf[i], optim_kl_ecdf[i], optim_kl_loc_ecdf[i], optim_kl_local_ecdf[i] = tune_sJoe_given_target(
+            theta_J_ecdf[i], theta_J_localized_ecdf[i], theta_J_local_ecdf[i] = tune_sJoe_given_target(
                 [U_win_ecdf], [mask_win], pdf_truth,
                 eval_clayton_kl_ecdf[i], eval_clayton_kl_localized_ecdf[i], eval_clayton_kl_local_ecdf[i], verbose=False
             )
-
-            kl_full_acc[i] += optim_kl[i]
-            kl_localized_acc[i] += optim_kl_loc[i]
-            kl_local_acc[i] += optim_kl_local[i]
-
-            kl_full_ecdf_acc[i] += optim_kl_ecdf[i]
-            kl_localized_ecdf_acc[i] += optim_kl_loc_ecdf[i]
-            kl_local_ecdf_acc[i] += optim_kl_local_ecdf[i]
 
             pdf_J[i]  = (lambda theta: lambda u: sJoe_copula_pdf_from_PITs(u, theta))(theta_J[i])
             pdf_J_localized[i] = (lambda theta: lambda u: sJoe_copula_pdf_from_PITs(u, theta))(theta_J_localized[i])
@@ -310,104 +288,29 @@ def run_one_rep(rep_idx: int):
             cs_diffs_ecdf[i][k] = cs_C_ecdf[i] - cs_J_localized_ecdf[i]
             cls_diffs_ecdf[i][k] = cls_C_ecdf[i] - cls_J_local_ecdf[i]
 
-        print(k)
-
-    mean_kl_full = np.empty(n_points)
-    mean_kl_localized = np.empty(n_points)
-    mean_kl_local = np.empty(n_points)
-    mean_kl_full_ecdf = np.empty(n_points)
-    mean_kl_localized_ecdf = np.empty(n_points)
-    mean_kl_local_ecdf = np.empty(n_points)
-
-    mean_full = np.empty(n_points)
-    mean_localized = np.empty(n_points)
-    mean_local = np.empty(n_points)
-
-    mean_full_ecdf = np.empty(n_points)
-    mean_localized_ecdf = np.empty(n_points)
-    mean_local_ecdf = np.empty(n_points)
-
-    var_full = np.empty(n_points)
-    var_locd = np.empty(n_points)
-    var_local = np.empty(n_points)
-
-    var_full_ecdf = np.empty(n_points)
-    var_locd_ecdf = np.empty(n_points)
-    var_local_ecdf = np.empty(n_points)
-
-    dm_full = np.empty(n_points)
-    dm_localized = np.empty(n_points)
-    dm_local = np.empty(n_points)
-
-    dm_full_ecdf = np.empty(n_points)
-    dm_localized_ecdf = np.empty(n_points)
-    dm_local_ecdf = np.empty(n_points)
-
-    for i in range(n_points):
-        mean_kl_full[i] = kl_full_acc[i] / P_steps
-        mean_kl_localized[i] = kl_localized_acc[i] / P_steps
-        mean_kl_local[i] = kl_local_acc[i] / P_steps
-
-        mean_kl_full_ecdf[i] = kl_full_ecdf_acc[i] / P_steps
-        mean_kl_localized_ecdf[i] = kl_localized_ecdf_acc[i] / P_steps
-        mean_kl_local_ecdf[i] = kl_local_ecdf_acc[i] / P_steps
-
-        mean_full[i] = sum_log[i] / P_steps
-        mean_localized[i] = sum_cs[i] / P_steps
-        mean_local[i] = sum_cls[i] / P_steps
-
-        mean_full_ecdf[i] = sum_log_ecdf[i] / P_steps
-        mean_localized_ecdf[i] = sum_cs_ecdf[i] / P_steps
-        mean_local_ecdf[i] = sum_cls_ecdf[i] / P_steps
-
-        # DM statistic with safety
-        var_full[i] = log_diffs[i].var(ddof=1)
-        var_locd[i] = cs_diffs[i].var(ddof=1)
-        var_local[i] = cls_diffs[i].var(ddof=1)
-
-        var_full_ecdf[i] = log_diffs_ecdf[i].var(ddof=1)
-        var_locd_ecdf[i] = cs_diffs_ecdf[i].var(ddof=1)
-        var_local_ecdf[i] = cls_diffs_ecdf[i].var(ddof=1)
-
-        dm_full[i] = mean_full[i] / np.sqrt(var_full[i] / P_steps)
-        dm_localized[i] = (0.0 if var_locd[i] < 1e-20 else mean_localized[i] / np.sqrt(var_locd[i] / P_steps))
-        dm_local[i] = (0.0 if var_local[i] < 1e-20 else mean_local[i] / np.sqrt(var_local[i] / P_steps))
-
-        dm_full_ecdf[i] = mean_full_ecdf[i] / np.sqrt(var_full_ecdf[i] / P_steps)
-        dm_localized_ecdf[i] = (0.0 if var_locd_ecdf[i] < 1e-20 else mean_localized_ecdf[i] / np.sqrt(var_locd_ecdf[i] / P_steps))
-        dm_local_ecdf[i] = (0.0 if var_local_ecdf[i] < 1e-20 else mean_local_ecdf[i] / np.sqrt(var_local_ecdf[i] / P_steps))
-
-
-    return (mean_full, mean_localized, mean_local, dm_full, dm_localized, dm_local,
-            mean_full_ecdf, mean_localized_ecdf, mean_local_ecdf, dm_full_ecdf, dm_localized_ecdf, dm_local_ecdf,
-            mean_kl_full, mean_kl_localized, mean_kl_local, mean_kl_full_ecdf, mean_kl_localized_ecdf, mean_kl_local_ecdf)
+    return (
+        log_diffs, cs_diffs, cls_diffs,
+        log_diffs_ecdf, cs_diffs_ecdf, cls_diffs_ecdf
+    )
 
 
 # ───────────────── 4. Main driver (parallel) ──────────────────────────
 def main() -> None:
-    mean_LogS  = np.empty((n_points,B_rep))
-    mean_CS  = np.empty((n_points,B_rep))
-    mean_CLS  = np.empty((n_points,B_rep))
+    log_diffs_all = np.empty((n_points, B_rep, P_steps))
+    cs_diffs_all = np.empty((n_points, B_rep, P_steps))
+    cls_diffs_all = np.empty((n_points, B_rep, P_steps))
 
-    mean_LogS_ecdf = np.empty((n_points,B_rep))
-    mean_CS_ecdf = np.empty((n_points,B_rep))
-    mean_CLS_ecdf = np.empty((n_points,B_rep))
+    log_diffs_ecdf_all = np.empty((n_points, B_rep, P_steps))
+    cs_diffs_ecdf_all = np.empty((n_points, B_rep, P_steps))
+    cls_diffs_ecdf_all = np.empty((n_points, B_rep, P_steps))
 
-    dm_full = np.empty((n_points,B_rep))
-    dm_localized = np.empty((n_points,B_rep))
-    dm_local = np.empty((n_points,B_rep))
+    dm_full = np.empty((n_points, B_rep))
+    dm_localized = np.empty((n_points, B_rep))
+    dm_local = np.empty((n_points, B_rep))
 
-    dm_full_ecdf = np.empty((n_points,B_rep))
-    dm_localized_ecdf = np.empty((n_points,B_rep))
-    dm_local_ecdf = np.empty((n_points,B_rep))
-
-    mean_kl_full = np.empty((n_points,B_rep))
-    mean_kl_localized = np.empty((n_points,B_rep))
-    mean_kl_local = np.empty((n_points,B_rep))
-
-    mean_kl_full_ecdf = np.empty((n_points,B_rep))
-    mean_kl_localized_ecdf = np.empty((n_points,B_rep))
-    mean_kl_local_ecdf = np.empty((n_points,B_rep))
+    dm_full_ecdf = np.empty((n_points, B_rep))
+    dm_localized_ecdf = np.empty((n_points, B_rep))
+    dm_local_ecdf = np.empty((n_points, B_rep))
 
 
     with (ProcessPoolExecutor(max_workers=n_proc) as ex):
@@ -416,39 +319,60 @@ def main() -> None:
             tqdm(as_completed(futures), total=B_rep, ncols=80,
                  desc="Rolling-window sims")
         ):
-            (mean_LogS[:,i], mean_CS[:,i], mean_CLS[:,i], dm_full[:,i], dm_localized[:,i], dm_local[:,i],
-             mean_LogS_ecdf[:,i], mean_CS_ecdf[:,i], mean_CLS_ecdf[:,i], dm_full_ecdf[:,i], dm_localized_ecdf[:,i], dm_local_ecdf[:,i],
-             mean_kl_full[:,i], mean_kl_localized[:,i], mean_kl_local[:,i],
-             mean_kl_full_ecdf[:,i], mean_kl_localized_ecdf[:,i], mean_kl_local_ecdf[:,i]) = fut.result()
+            (log, cs, cls, log_e, cs_e, cls_e)= fut.result()
 
-    plt.plot(mean_kl_full[0])
-    plt.show()
+            log_diffs_all[:, i] = log
+            cs_diffs_all[:, i] = cs
+            cls_diffs_all[:, i] = cls
 
-    plt.plot(mean_kl_full[1])
-    plt.show()
+            log_diffs_ecdf_all[:, i] = log_e
+            cs_diffs_ecdf_all[:, i] = cs_e
+            cls_diffs_ecdf_all[:, i] = cls_e
 
-    plt.plot(mean_kl_full[3])
-    plt.show()
+    for i in range(n_points):
+        for b in range(B_rep):
 
-    plt.plot(mean_kl_localized[2])
-    plt.show()
+            diffs = log_diffs_all[i, b]
+            var = diffs.var(ddof=1)
+            mean = diffs.mean()
+            dm_full[i, b] = 0.0 if var < 1e-20 else mean / np.sqrt(var / P_steps)
 
-    plt.plot(range(n_points), np.mean(mean_kl_full, axis=1), label="Oracle")
-    plt.plot(range(n_points), np.mean(mean_kl_full_ecdf, axis=1), label="ECDF")
-    plt.title("Average KL per eval point")
-    plt.legend()
-    plt.show()
+            if (b==0):
+                print(f"the P number of log differences for eval {i} : {diffs}")
+                print(f"the variance of those P log diff for eval {i} : {var}")
+                print(f"the mean of those P log diff for eval {i} : {mean}")
+                print(f"associated dm stat for eval {i} : {dm_full[i, b]}")
 
-    kl_full_for_plot = np.mean(mean_kl_full, axis=1)
-    kl_localized_for_plot = np.mean(mean_kl_localized, axis=1)
-    kl_local_for_plot = np.mean(mean_kl_local, axis=1)
+            diffs_ecdf = log_diffs_ecdf_all[i, b]
+            var_ecdf = diffs_ecdf.var(ddof=1)
+            mean_ecdf = diffs_ecdf.mean()
+            dm_full_ecdf[i, b] = 0.0 if var_ecdf < 1e-20 else mean_ecdf / np.sqrt(var_ecdf / P_steps)
 
-    kl_full_for_plot_ecdf = np.mean(mean_kl_full_ecdf, axis=1)
-    kl_localized_for_plot_ecdf = np.mean(mean_kl_localized_ecdf, axis=1)
-    kl_local_for_plot_ecdf = np.mean(mean_kl_local_ecdf, axis=1)
+            diffs_cs = cs_diffs_all[i, b]
+            var_cs = diffs_cs.var(ddof=1)
+            mean_cs = diffs_cs.mean()
+            dm_localized[i, b] = 0.0 if var_cs < 1e-20 else mean_cs / np.sqrt(var_cs / P_steps)
+
+            diffs_cs_ecdf = cs_diffs_ecdf_all[i, b]
+            var_cs_ecdf = diffs_cs_ecdf.var(ddof=1)
+            mean_cs_ecdf = diffs_cs_ecdf.mean()
+            dm_localized_ecdf[i, b] = 0.0 if var_cs_ecdf < 1e-20 else mean_cs_ecdf / np.sqrt(var_cs_ecdf / P_steps)
+
+            diffs_cls = cls_diffs_all[i, b]
+            var_cls = diffs_cls.var(ddof=1)
+            mean_cls = diffs_cls.mean()
+            dm_local[i, b] = 0.0 if var_cls < 1e-20 else mean_cls / np.sqrt(var_cls / P_steps)
+
+            diffs_cls_ecdf = cls_diffs_ecdf_all[i, b]
+            var_cls_ecdf = diffs_cls_ecdf.var(ddof=1)
+            mean_cls_ecdf = diffs_cls_ecdf.mean()
+            dm_local_ecdf[i, b] = 0.0 if var_cls_ecdf < 1e-20 else mean_cls_ecdf / np.sqrt(var_cls_ecdf / P_steps)
 
     # Rejection rate + Size discrepancy ---------------------------------------------------
     left_LogS = np.array([(dm_full[i] < norm.ppf(nominal_size)).mean() for i in range(n_points)])
+
+    print(f" the left tailed rejection rates of the dm statistics per eval: {left_LogS}")
+
     left_LogS_ecdf = np.array([(dm_full_ecdf[i] < norm.ppf(nominal_size)).mean() for i in range(n_points)])
 
     left_CS = np.array([(dm_localized[i] < norm.ppf(nominal_size)).mean() for i in range(n_points)])
@@ -457,14 +381,15 @@ def main() -> None:
     left_CLS = np.array([(dm_local[i] < norm.ppf(nominal_size)).mean() for i in range(n_points)])
     left_CLS_ecdf = np.array([(dm_local_ecdf[i] < norm.ppf(nominal_size)).mean() for i in range(n_points)])
 
-    def show_power(ax, kl_axis1, kl_axis2, power1, power2, label1, label2, color1, color2):
-        ax.plot(kl_axis1, power1, color=color1)
-        ax.plot(kl_axis2, power2, color=color2)
+    def show_power(ax, xaxis, power1, power2, label1, label2, color1, color2):
+        ax.plot(xaxis, power1, label=label1, color=color1)
+        ax.plot(xaxis, power2, label=label2, color=color2)
         plt.axhline(nominal_size, color="gray", linestyle="--", linewidth=1)
-        ax.set_xlabel("KL distance from true")
+        ax.set_xlabel("Fraction of KL between true and incorrect Clayton")
+        ax.legend()
 
     fig1, ax1 = plt.subplots(1, 1, figsize=(6, 4))
-    show_power(ax1, kl_full_for_plot, kl_full_for_plot_ecdf, left_LogS, left_LogS_ecdf, "Oracle", "ECDF", "tab:blue", "navy")
+    show_power(ax1, np.linspace(1/n_points, 1, n_points), left_LogS, left_LogS_ecdf, "Oracle", "ECDF", "tab:blue", "navy")
     ax1.set_title("Power (Clayton – sJoe KL matched) left-tailed")
     ax1.set_ylabel("Power (rejection rate)")
     fig1.suptitle("Power envelope LogS: Oracle vs ECDF", fontsize=16)
@@ -472,7 +397,7 @@ def main() -> None:
     plt.show()
 
     fig2, ax2 = plt.subplots(1, 1, figsize=(6, 4))
-    show_power(ax2, kl_localized_for_plot, kl_localized_for_plot_ecdf, left_CS, left_CS_ecdf,"Oracle", "ECDF", "red", "darkred")
+    show_power(ax2, np.linspace(1/n_points, 1, n_points), left_CS, left_CS_ecdf,"Oracle", "ECDF", "red", "darkred")
     ax2.set_title("Power (Clayton – sJoe localized KL matched) left-tailed")
     ax2.set_ylabel("Power (rejection rate)")
     fig2.suptitle("Power envelope CS: Oracle vs ECDF", fontsize=16)
@@ -480,7 +405,7 @@ def main() -> None:
     plt.show()
 
     fig3, ax3 = plt.subplots(1, 1, figsize=(6, 4))
-    show_power(ax3, kl_local_for_plot, kl_local_for_plot_ecdf, left_CLS, left_CLS_ecdf,"Oracle", "ECDF", "seagreen", "darkgreen")
+    show_power(ax3, np.linspace(1/n_points, 1, n_points), left_CLS, left_CLS_ecdf,"Oracle", "ECDF", "seagreen", "darkgreen")
     ax3.set_title("Power (Clayton – sJoe local KL matched) left-tailed")
     ax3.set_ylabel("Power (rejection rate)")
     fig3.suptitle("Power envelope CLS: Oracle vs ECDF", fontsize=16)
